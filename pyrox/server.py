@@ -1,6 +1,7 @@
 from .env import get_logger
 
 from tornado.ioloop import IOLoop
+from tornado.iostream import IOStream
 from tornado.tcpserver import TCPServer
 
 from pyrox.http import HttpParser, ParserDelegate
@@ -56,11 +57,12 @@ class TornadoHttpProxy(TCPServer):
         super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
         self.address = address
 
-    def start(self, processes=0):
+    def start(self):
+        # bind() args are port, address
         self.bind(self.address[1], self.address[0])
-        super(TornadoHttpProxy, self).start(processes)
+        super(TornadoHttpProxy, self).start()
         _LOG.info('TCP server running on: {0}:{1}',
-                  self.address[1], self.address[0])
+                  self.address[0], self.address[1])
 
     def handle_stream(self, stream, address):
         TornadoConnection(HttpParser(FilterHandler(['GET'], None)),
