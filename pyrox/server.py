@@ -18,11 +18,11 @@ class FilterHandler(ParserDelegate):
 
     def on_req_method(self, method):
         if self.method_interests and method in self.method_interests:
-            print('Capturing request by method')
+            _LOG.info('Capturing request by method')
 
     def on_url(self, url):
         if self.url_matcher and self.url_matcher.matches(url):
-            print('Capturing request by url')
+            _LOG.info('Capturing request by url')
 
     def on_header(self, name, value):
         pass
@@ -60,10 +60,13 @@ class TornadoHttpProxy(TCPServer):
     def start(self):
         self.bind(self.address[1], self.address[0])
         super(TornadoHttpProxy, self).start()
-        _LOG.info('TCP server ready!')
+        _LOG.info('TCP server running on: {0}:{1}',
+                  self.address[1], self.address[0])
 
     def handle_stream(self, stream, address):
-        TornadoConnection(HttpParser(FilterHandler(['GET'], None)), stream, address)
+        TornadoConnection(HttpParser(FilterHandler(['GET'], None)),
+                          stream, address)
+
 
 def start_io():
     IOLoop.instance().start()

@@ -5,7 +5,7 @@ import json
 from pyrox.http import HttpParser, ParserDelegate
 
 
-REQUEST_LINE = b'GET /test/12345?field=value&field2=value#fragment HTTP/1.1\r\n'
+REQUEST_LINE = b'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
 HEADER = b'Content-Length: 0\r\n'
 MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
 ARRAY_HEADER = b'Other: test, test, test\r\n'
@@ -60,7 +60,7 @@ class ValidatingDelegate(ParserDelegate):
         self.test.assertEquals('GET', method)
 
     def on_url(self, url):
-        self.test.assertEquals('/test/12345?field=value&field2=value#fragment', url)
+        self.test.assertEquals('/test/12345?field=f1&field2=f2#fragment', url)
 
     def on_header(self, name, value):
         self.test.assertEquals('Content-Length', name)

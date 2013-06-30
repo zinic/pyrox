@@ -5,5 +5,3 @@ class RequestFilter(object):
 
     def on_header(self, name, value):
         pass
-
-
