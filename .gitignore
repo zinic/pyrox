@@ -1,0 +1,14 @@
+build/
+dist/
+.coverage
+*.pyc
+*.c
+*.so
+.idea
+*.egg-info/
+*~
+*#
+.tox
+*.DS_Store*
+nosetests.xml
+*/coverage.xml
