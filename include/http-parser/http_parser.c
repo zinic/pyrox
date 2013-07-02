@@ -1096,8 +1096,6 @@ size_t http_parser_execute (http_parser *parser,
       /* major HTTP version or dot */
       case s_req_http_major:
       {
-        // Not sure if this is a good idea but we'll see
-        CALLBACK_NOTIFY_NOADVANCE(req_line_complete);
         if (ch == '.') {
           parser->state = s_req_first_http_minor;
           break;
@@ -1134,11 +1132,13 @@ size_t http_parser_execute (http_parser *parser,
       case s_req_http_minor:
       {
         if (ch == CR) {
+          CALLBACK_NOTIFY(req_line_complete);
           parser->state = s_req_line_almost_done;
           break;
         }
 
         if (ch == LF) {
+          CALLBACK_NOTIFY(req_line_complete);
           parser->state = s_header_field_start;
           break;
         }
