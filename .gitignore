@@ -2,7 +2,7 @@ build/
 dist/
 .coverage
 *.pyc
-*.c
+pyrox/http/parser.c
 *.so
 .idea
 *.egg-info/
