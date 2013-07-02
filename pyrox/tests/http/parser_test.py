@@ -130,6 +130,10 @@ class WhenParsingRequests(unittest.TestCase):
         datalen = len(HEADER)
         read = parser.execute(HEADER, datalen)
         self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            REQUEST_METHOD_SLOT: 1,
+            REQUEST_URI_SLOT: 1,
+            HEADER_SLOT: 1}, self)
 
     def test_read_multi_value_header(self):
         test_filter = TrackingFilter(MultiValueHeaderFilter(self))
@@ -140,6 +144,10 @@ class WhenParsingRequests(unittest.TestCase):
         datalen = len(MULTI_VALUE_HEADER)
         read = parser.execute(MULTI_VALUE_HEADER, datalen)
         self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            REQUEST_METHOD_SLOT: 1,
+            REQUEST_URI_SLOT: 1,
+            HEADER_SLOT: 2}, self)
 
     def test_read_array_value_header(self):
         test_filter = TrackingFilter(ArrayValueHeaderFilter(self))
@@ -150,6 +158,10 @@ class WhenParsingRequests(unittest.TestCase):
         datalen = len(ARRAY_HEADER)
         read = parser.execute(ARRAY_HEADER, datalen)
         self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            REQUEST_METHOD_SLOT: 1,
+            REQUEST_URI_SLOT: 1,
+            HEADER_SLOT: 1}, self)
 
 
 if __name__ == '__main__':
