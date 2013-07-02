@@ -5,6 +5,15 @@ The high-speed HTTP middleware proxy for python.
 * Build ontop of the [Joyent HTTP Parser](https://github.com/joyent/http-parser)
 * Utilizes [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
 
+
+## Cloning Pyrox
+```bash
+git clone https://github.com/zinic/pyrox.git
+git submodule init
+git submodule update
+```
+
+
 ## Building Pyrox
 ```bash
 pip install -r tools/dev-requires
