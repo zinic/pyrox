@@ -64,6 +64,18 @@ cdef int on_message_complete_cb(http_parser *parser):
     return 0
 
 
+class ParserDelegate(object):
+
+    def on_req_method(self, method):
+        pass
+
+    def on_url(self, url):
+        pass
+
+    def on_header(self, name, value):
+        pass
+
+
 class ParserData(object):
 
     def __init__(self, delegate):

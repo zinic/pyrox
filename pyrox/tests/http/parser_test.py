@@ -2,7 +2,7 @@ import unittest
 import time
 import json
 
-from pyrox.http import HttpParser, Filter, FilterAction
+from pyrox.http import HttpParser, ParserDelegate
 
 
 REQUEST_LINE = b'GET /test/12345?field=value&field2=value#fragment HTTP/1.1\r\n'
@@ -17,7 +17,7 @@ REQUEST_URI_SLOT = 'REQUEST_URI'
 HEADER_SLOT = 'HEADER'
 
 
-class TrackingFilter(Filter):
+class TrackingDelegate(ParserDelegate):
 
     def __init__(self, delegate):
         self.hits = {
@@ -51,7 +51,7 @@ class TrackingFilter(Filter):
         self.delegate.on_header(name, value)
 
 
-class ValidatingFilter(Filter):
+class ValidatingDelegate(ParserDelegate):
 
     def __init__(self, test):
         self.test = test
@@ -67,7 +67,7 @@ class ValidatingFilter(Filter):
         self.test.assertEquals('0', value)
 
 
-class MultiValueHeaderFilter(Filter):
+class MultiValueHeaderDelegate(ParserDelegate):
 
     def __init__(self, test):
         self.test = test
@@ -83,7 +83,7 @@ class MultiValueHeaderFilter(Filter):
             self.test.assertEquals('test2', value)
 
 
-class ArrayValueHeaderFilter(Filter):
+class ArrayValueHeaderDelegate(ParserDelegate):
 
     def __init__(self, test):
         self.test = test
@@ -100,7 +100,7 @@ class WhenParsingRequests(unittest.TestCase):
         parser = HttpParser(None)
 
     def test_read_request_line(self):
-        test_filter = TrackingFilter(ValidatingFilter(self))
+        test_filter = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpParser(test_filter)
 
         datalen = len(REQUEST_LINE)
@@ -111,7 +111,7 @@ class WhenParsingRequests(unittest.TestCase):
             REQUEST_URI_SLOT: 1}, self)
 
     def test_read_partial_request_line(self):
-        test_filter = TrackingFilter(ValidatingFilter(self))
+        test_filter = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpParser(test_filter)
 
         datalen = len(REQUEST_LINE) / 2
@@ -122,7 +122,7 @@ class WhenParsingRequests(unittest.TestCase):
             REQUEST_URI_SLOT: 0}, self)
 
     def test_read_request_header(self):
-        test_filter = TrackingFilter(ValidatingFilter(self))
+        test_filter = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpParser(test_filter)
 
         read = parser.execute(REQUEST_LINE, len(REQUEST_LINE))
@@ -136,7 +136,7 @@ class WhenParsingRequests(unittest.TestCase):
             HEADER_SLOT: 1}, self)
 
     def test_read_multi_value_header(self):
-        test_filter = TrackingFilter(MultiValueHeaderFilter(self))
+        test_filter = TrackingDelegate(MultiValueHeaderDelegate(self))
         parser = HttpParser(test_filter)
 
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
@@ -150,7 +150,7 @@ class WhenParsingRequests(unittest.TestCase):
             HEADER_SLOT: 2}, self)
 
     def test_read_array_value_header(self):
-        test_filter = TrackingFilter(ArrayValueHeaderFilter(self))
+        test_filter = TrackingDelegate(ArrayValueHeaderDelegate(self))
         parser = HttpParser(test_filter)
 
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
