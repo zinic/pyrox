@@ -26,6 +26,7 @@ cdef extern from "http_parser.h":
     struct http_parser_settings:
         http_cb on_message_begin
         http_data_cb on_url
+        http_cb on_status_complete
         http_data_cb on_header_field
         http_data_cb on_header_value
         http_cb on_headers_complete
@@ -36,7 +37,7 @@ cdef extern from "http_parser.h":
 
     size_t http_parser_execute(http_parser *parser,
             http_parser_settings *settings, char *data,
-            size_t len)
+            size_t len) except -1
 
     int http_should_keep_alive(http_parser *parser)
 

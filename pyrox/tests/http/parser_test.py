@@ -12,7 +12,40 @@ ARRAY_HEADER = b'Other: test, test, test\r\n'
 END = b'\r\n'
 
 
-class SimpleValidatingFilter(Filter):
+REQUEST_METHOD_SLOT = 'REQUEST_METHOD'
+REQUEST_URI_SLOT = 'REQUEST_URI'
+HEADER_SLOT = 'HEADER'
+
+
+class TrackingFilter(Filter):
+
+    def __init__(self, delegate):
+        self.hits = dict()
+        self.delegate = delegate
+
+    def register_hit(self, slot):
+        if slot in self.hits:
+            self.hits[slot] += 1
+        else:
+            self.hits[slot] = 1
+
+    def validate_hits(self, expected, test):
+        test.assertEquals(expected, self.slots)
+
+    def on_req_method(self, method):
+        self.register_hit(REQUEST_METHOD_SLOT)
+        self.delegate.on_req_method(method)
+
+    def on_url(self, url):
+        self.register_hit(REQUEST_URI_SLOT)
+        self.delegate.on_url(url)
+
+    def on_header(self, name, value):
+        self.register_hit(HEADER_SLOT)
+        self.delegate.on_header(name, value)
+
+
+class ValidatingFilter(Filter):
 
     def __init__(self, test):
         self.test = test
@@ -50,21 +83,35 @@ class WhenParsingRequests(unittest.TestCase):
         parser = HttpParser(None)
 
     def test_read_request_line(self):
-        parser = HttpParser(SimpleValidatingFilter(self))
+        test_filter = TrackingFilter(ValidatingFilter(self))
+        parser = HttpParser(test_filter)
+
         datalen = len(REQUEST_LINE)
         read = parser.execute(REQUEST_LINE, datalen)
         self.assertEquals(datalen, read)
 
+    def test_read_partial_request_line(self):
+        test_filter = TrackingFilter(ValidatingFilter(self))
+        parser = HttpParser(test_filter)
+
+        datalen = len(REQUEST_LINE) / 2
+        read = parser.execute(REQUEST_LINE[:datalen], datalen)
+        self.assertEquals(datalen, read)
+
     def test_read_request_header(self):
-        parser = HttpParser(SimpleValidatingFilter(self))
-        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
+        test_filter = TrackingFilter(ValidatingFilter(self))
+        parser = HttpParser(test_filter)
+
+        read = parser.execute(REQUEST_LINE, len(REQUEST_LINE))
 
         datalen = len(HEADER)
         read = parser.execute(HEADER, datalen)
         self.assertEquals(datalen, read)
 
     def test_read_multi_value_header(self):
-        parser = HttpParser(MultiValueHeaderFilter(self))
+        test_filter = TrackingFilter(MultiValueHeaderFilter(self))
+        parser = HttpParser(test_filter)
+
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
 
         datalen = len(MULTI_VALUE_HEADER)
