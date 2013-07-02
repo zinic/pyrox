@@ -25,6 +25,7 @@ cdef extern from "http_parser.h":
 
     struct http_parser_settings:
         http_cb on_message_begin
+        http_cb on_req_method
         http_data_cb on_url
         http_cb on_req_line_complete
         http_cb on_status_complete

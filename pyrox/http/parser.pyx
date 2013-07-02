@@ -3,13 +3,7 @@ from libc.stdlib cimport malloc, free
 from cpython cimport PyBytes_FromStringAndSize, PyBytes_FromString
 
 
-cdef int on_url_cb(http_parser *parser, char *at, size_t length):
-    cdef object data = <object>parser.data
-    data.append_url_bytes(at, length)
-    return 0
-
-
-cdef int on_req_line_complete(http_parser *parser):
+cdef int on_req_method(http_parser *parser):
     cdef object method = PyBytes_FromString(http_method_str(<http_method>parser.method))
     cdef object data = <object>parser.data
 
@@ -19,6 +13,15 @@ cdef int on_req_line_complete(http_parser *parser):
     except Exception as ex:
         data.exception = ex
         return -1
+    return 0
+
+cdef int on_url_cb(http_parser *parser, char *at, size_t length):
+    cdef object data = <object>parser.data
+    data.append_url_bytes(at, length)
+    return 0
+
+cdef int on_req_line_complete(http_parser *parser):
+    cdef object data = <object>parser.data
 
     # Process URI
     try:
@@ -68,6 +71,7 @@ class ParserData(object):
         self.header_name = ''
         self.exception = None
         self.delegate =  delegate
+        self.next_action = None
 
     def append_url_bytes(self, char *data, size_t length):
         self.url += PyBytes_FromStringAndSize(data, length)
@@ -105,6 +109,7 @@ cdef class HttpParser(object):
         self._parser.data = <void *>self.parser_data
 
         # set callback
+        self._settings.on_req_method = <http_cb>on_req_method
         self._settings.on_url = <http_data_cb>on_url_cb
         self._settings.on_req_line_complete = <http_cb>on_req_line_complete
         self._settings.on_status_complete = <http_cb>on_status_complete

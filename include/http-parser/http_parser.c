@@ -979,7 +979,8 @@ size_t http_parser_execute (http_parser *parser,
       case s_req_spaces_before_url:
       {
         if (ch == ' ') break;
-
+        // JHop: Added Callback
+        CALLBACK_NOTIFY(req_method);
         MARK(url);
         if (parser->method == HTTP_CONNECT) {
           parser->state = s_req_server_start;
@@ -1132,12 +1133,14 @@ size_t http_parser_execute (http_parser *parser,
       case s_req_http_minor:
       {
         if (ch == CR) {
+          // JHop: Added Callback
           CALLBACK_NOTIFY(req_line_complete);
           parser->state = s_req_line_almost_done;
           break;
         }
 
         if (ch == LF) {
+          // JHop: Added Callback
           CALLBACK_NOTIFY(req_line_complete);
           parser->state = s_header_field_start;
           break;

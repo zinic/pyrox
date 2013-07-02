@@ -143,6 +143,7 @@ enum flags
   /* Callback-related errors */                                      \
   XX(CB_message_begin, "the on_message_begin callback failed")       \
   XX(CB_status_complete, "the on_status_complete callback failed")   \
+  XX(CB_req_method, "the on_req_method callback failed")             \
   XX(CB_url, "the on_url callback failed")                           \
   XX(CB_req_line_complete, "the on_req_line_complete callback failed") \
   XX(CB_header_field, "the on_header_field callback failed")         \
@@ -223,6 +224,7 @@ struct http_parser {
 
 struct http_parser_settings {
   http_cb      on_message_begin;
+  http_cb      on_req_method;
   http_data_cb on_url;
   http_cb      on_req_line_complete;
   http_cb      on_status_complete;

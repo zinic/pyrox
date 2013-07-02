@@ -118,7 +118,7 @@ class WhenParsingRequests(unittest.TestCase):
         read = parser.execute(REQUEST_LINE[:datalen], datalen)
         self.assertEquals(datalen, read)
         test_filter.validate_hits({
-            REQUEST_METHOD_SLOT: 0,
+            REQUEST_METHOD_SLOT: 1,
             REQUEST_URI_SLOT: 0}, self)
 
     def test_read_request_header(self):
