@@ -5,7 +5,7 @@ import json
 from pyrox.http import HttpParser, Filter, FilterAction
 
 
-REQUEST_LINE = b'GET /test/12345?field=value#fragment HTTP/1.1\r\n'
+REQUEST_LINE = b'GET /test/12345?field=value&field2=value#fragment HTTP/1.1\r\n'
 HEADER = b'Content-Length: 0\r\n'
 MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
 ARRAY_HEADER = b'Other: test, test, test\r\n'
@@ -20,17 +20,23 @@ HEADER_SLOT = 'HEADER'
 class TrackingFilter(Filter):
 
     def __init__(self, delegate):
-        self.hits = dict()
+        self.hits = {
+            REQUEST_METHOD_SLOT: 0,
+            REQUEST_URI_SLOT: 0,
+            HEADER_SLOT: 0
+        }
+
         self.delegate = delegate
 
     def register_hit(self, slot):
-        if slot in self.hits:
-            self.hits[slot] += 1
-        else:
-            self.hits[slot] = 1
+        self.hits[slot] += 1
 
     def validate_hits(self, expected, test):
-        test.assertEquals(expected, self.slots)
+        for key in expected:
+            test.assertEquals(
+                expected[key],
+                self.hits[key],
+                'Failed on expected hits for key: {}'.format(key))
 
     def on_req_method(self, method):
         self.register_hit(REQUEST_METHOD_SLOT)
@@ -54,7 +60,7 @@ class ValidatingFilter(Filter):
         self.test.assertEquals('GET', method)
 
     def on_url(self, url):
-        self.test.assertEquals('/test/12345?field=value#fragment', url)
+        self.test.assertEquals('/test/12345?field=value&field2=value#fragment', url)
 
     def on_header(self, name, value):
         self.test.assertEquals('Content-Length', name)
@@ -77,6 +83,17 @@ class MultiValueHeaderFilter(Filter):
             self.test.assertEquals('test2', value)
 
 
+class ArrayValueHeaderFilter(Filter):
+
+    def __init__(self, test):
+        self.test = test
+        self.second_value = False
+
+    def on_header(self, name, value):
+        self.test.assertEquals('Other', name)
+        self.test.assertEquals('test, test, test', value)
+
+
 class WhenParsingRequests(unittest.TestCase):
 
     def test_init(self):
@@ -89,6 +106,9 @@ class WhenParsingRequests(unittest.TestCase):
         datalen = len(REQUEST_LINE)
         read = parser.execute(REQUEST_LINE, datalen)
         self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            REQUEST_METHOD_SLOT: 1,
+            REQUEST_URI_SLOT: 1}, self)
 
     def test_read_partial_request_line(self):
         test_filter = TrackingFilter(ValidatingFilter(self))
@@ -97,6 +117,9 @@ class WhenParsingRequests(unittest.TestCase):
         datalen = len(REQUEST_LINE) / 2
         read = parser.execute(REQUEST_LINE[:datalen], datalen)
         self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            REQUEST_METHOD_SLOT: 0,
+            REQUEST_URI_SLOT: 0}, self)
 
     def test_read_request_header(self):
         test_filter = TrackingFilter(ValidatingFilter(self))
@@ -116,6 +139,16 @@ class WhenParsingRequests(unittest.TestCase):
 
         datalen = len(MULTI_VALUE_HEADER)
         read = parser.execute(MULTI_VALUE_HEADER, datalen)
+        self.assertEquals(datalen, read)
+
+    def test_read_array_value_header(self):
+        test_filter = TrackingFilter(ArrayValueHeaderFilter(self))
+        parser = HttpParser(test_filter)
+
+        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
+
+        datalen = len(ARRAY_HEADER)
+        read = parser.execute(ARRAY_HEADER, datalen)
         self.assertEquals(datalen, read)
 
 

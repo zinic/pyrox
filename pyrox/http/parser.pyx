@@ -8,7 +8,8 @@ cdef int on_url_cb(http_parser *parser, char *at, size_t length):
     data.append_url_bytes(at, length)
     return 0
 
-cdef int on_status_complete(http_parser *parser):
+
+cdef int on_req_line_complete(http_parser *parser):
     cdef object method = PyBytes_FromString(http_method_str(<http_method>parser.method))
     cdef object data = <object>parser.data
 
@@ -21,10 +22,12 @@ cdef int on_status_complete(http_parser *parser):
 
     # Process URI
     try:
-        data.delegate.on_url(data.get_url())
+        data.delegate.on_url(data.url)
     except Exception as ex:
         data.exception = ex
         return -1
+
+cdef int on_status_complete(http_parser *parser):
     return 0
 
 cdef int on_header_field_cb(http_parser *parser, char *at, size_t length) with gil:
@@ -103,6 +106,7 @@ cdef class HttpParser(object):
 
         # set callback
         self._settings.on_url = <http_data_cb>on_url_cb
+        self._settings.on_req_line_complete = <http_cb>on_req_line_complete
         self._settings.on_status_complete = <http_cb>on_status_complete
         self._settings.on_body = <http_data_cb>on_body_cb
         self._settings.on_header_field = <http_data_cb>on_header_field_cb
