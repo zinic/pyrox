@@ -1,4 +1,4 @@
-class Filter(object):
+class RequestFilter(object):
 
     def on_url(self, url):
         pass
@@ -6,7 +6,4 @@ class Filter(object):
     def on_header(self, name, value):
         pass
 
-
-class FilterAction(object):
-    pass
 

@@ -4,19 +4,36 @@ from tornado.ioloop import IOLoop
 from tornado.iostream import IOStream
 from tornado.tcpserver import TCPServer
 
-from http_parser.parser import HttpParser
+from pyrox.http import HttpParser, ParserDelegate
 
 
 _LOG = get_logger(__name__)
 
 
-class TornadoHttpConnection(object):
+class FilterHandler(ParserDelegate):
 
-    def __init__(self, reader, stream, address):
-        self.reader = reader
+    def __init__(self, method_interests, url_matcher):
+        self.method_interests = method_interests
+        self.url_matcher = url_matcher
+
+    def on_req_method(self, method):
+        if self.method_interests and method in self.method_interests:
+            print('Capturing request by method')
+
+    def on_url(self, url):
+        if self.url_matcher and self.url_matcher.matches(url):
+            print('Capturing request by url')
+
+    def on_header(self, name, value):
+        pass
+
+
+class TornadoConnection(object):
+
+    def __init__(self, parser, stream, address):
         self.stream = stream
         self.address = address
-        self.parser = HttpParser()
+        self.parser = parser
 
         # Set our callbacks
         self.stream.set_close_callback(self._on_close)
@@ -25,7 +42,7 @@ class TornadoHttpConnection(object):
             streaming_callback=self._on_stream)
 
     def _on_stream(self, data):
-        pass
+        self.parser.execute(data, len(data))
 
     def _on_read(self, data):
         pass
@@ -34,17 +51,19 @@ class TornadoHttpConnection(object):
         pass
 
 
-class TornadoTcpServer(TCPServer):
+class TornadoHttpProxy(TCPServer):
 
     def __init__(self, address, ssl_options=None):
-        super(TornadoTcpServer, self).__init__(ssl_options=ssl_options)
+        super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
         self.address = address
 
     def start(self):
         self.bind(self.address[1], self.address[0])
-        super(TornadoTcpServer, self).start()
+        super(TornadoHttpProxy, self).start()
         _LOG.info('TCP server ready!')
 
+    def handle_stream(self, stream, address):
+        TornadoConnection(HttpParser(FilterHandler(['GET'], None)), stream, address)
 
 def start_io():
     IOLoop.instance().start()
