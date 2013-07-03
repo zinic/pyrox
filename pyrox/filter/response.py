@@ -5,4 +5,3 @@ class ResponseFilter(object):
 
     def on_header(self, name, value):
         pass
-

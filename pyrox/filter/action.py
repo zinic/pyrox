@@ -1,3 +1,2 @@
 class FilterAction(object):
     pass
-
