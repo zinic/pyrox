@@ -4,7 +4,8 @@ from cpython cimport PyBytes_FromStringAndSize, PyBytes_FromString
 
 
 cdef int on_req_method(http_parser *parser):
-    cdef object method = PyBytes_FromString(http_method_str(<http_method>parser.method))
+    cdef object method = PyBytes_FromString(
+        http_method_str(<http_method>parser.method))
     cdef object data = <object>parser.data
 
     # Process Request Method
@@ -31,9 +32,16 @@ cdef int on_req_line_complete(http_parser *parser):
         return -1
 
 cdef int on_status_complete(http_parser *parser):
+    cdef object data = <object>parser.data
+    try:
+        data.delegate.on_status(parser.status_code)
+    except Exception as ex:
+        data.exception = ex
+        return -1
     return 0
 
-cdef int on_header_field_cb(http_parser *parser, char *at, size_t length) with gil:
+cdef int on_header_field_cb(
+        http_parser *parser, char *at, size_t length) with gil:
     cdef object header_name = PyBytes_FromStringAndSize(at, length)
     cdef object data = <object>parser.data
     data.header_name = header_name
@@ -82,7 +90,7 @@ class ParserData(object):
         self.url = ''
         self.header_name = ''
         self.exception = None
-        self.delegate =  delegate
+        self.delegate = delegate
         self.next_action = None
 
     def append_url_bytes(self, char *data, size_t length):
@@ -143,9 +151,9 @@ cdef class HttpParser(object):
         :return recved: Int, received length of the data parsed. if
         recvd != length you should return an error.
         """
-        read = http_parser_execute(self._parser, &self._settings, data, length)
+        read = http_parser_execute(
+            self._parser, &self._settings, data, length)
 
         if self.parser_data.exception:
             raise self.parser_data.exception
         return read
-

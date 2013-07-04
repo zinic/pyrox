@@ -57,9 +57,9 @@ class TornadoHttpProxy(TCPServer):
         super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
         self.address = address
 
-    def start(self):
+    def start(self, processes=0):
         self.bind(self.address[1], self.address[0])
-        super(TornadoHttpProxy, self).start()
+        super(TornadoHttpProxy, self).start(processes)
         _LOG.info('TCP server running on: {0}:{1}',
                   self.address[1], self.address[0])
 
