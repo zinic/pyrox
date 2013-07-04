@@ -3,7 +3,6 @@ import sys
 import os
 
 from setuptools import setup, find_packages
-from setuptools.command import easy_install
 from distutils.extension import Extension
 
 try:
@@ -45,7 +44,6 @@ def cythonize():
 
 
 def package_c():
-    missing_modules = list()
     extensions = list()
     extensions.append(Extension(
         'pyrox.http.parser',

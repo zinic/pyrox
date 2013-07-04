@@ -1,6 +1,4 @@
 import unittest
-import time
-import json
 
 from pyrox.http import HttpParser, ParserDelegate
 

@@ -1,7 +1,6 @@
 from .env import get_logger
 
 from tornado.ioloop import IOLoop
-from tornado.iostream import IOStream
 from tornado.tcpserver import TCPServer
 
 from pyrox.http import HttpParser, ParserDelegate
