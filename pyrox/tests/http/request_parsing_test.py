@@ -127,6 +127,7 @@ class WhenParsingRequests(unittest.TestCase):
 
         datalen = len(HEADER)
         read = parser.execute(HEADER, datalen)
+        parser.execute(END, len(END))
         self.assertEquals(datalen, read)
         test_filter.validate_hits({
             REQUEST_METHOD_SLOT: 1,
@@ -141,6 +142,7 @@ class WhenParsingRequests(unittest.TestCase):
 
         datalen = len(MULTI_VALUE_HEADER)
         read = parser.execute(MULTI_VALUE_HEADER, datalen)
+        parser.execute(END, len(END))
         self.assertEquals(datalen, read)
         test_filter.validate_hits({
             REQUEST_METHOD_SLOT: 1,
@@ -155,6 +157,7 @@ class WhenParsingRequests(unittest.TestCase):
 
         datalen = len(ARRAY_HEADER)
         read = parser.execute(ARRAY_HEADER, datalen)
+        parser.execute(END, len(END))
         self.assertEquals(datalen, read)
         test_filter.validate_hits({
             REQUEST_METHOD_SLOT: 1,

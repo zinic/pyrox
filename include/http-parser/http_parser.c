@@ -26,6 +26,7 @@
 #include <stddef.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <limits.h>
 
@@ -835,6 +836,9 @@ size_t http_parser_execute (http_parser *parser,
               SET_ERRNO(HPE_INVALID_STATUS);
               goto error;
           }
+          // JHop: added callback
+          printf("###DONE WITH STATUS CODE");
+          CALLBACK_NOTIFY_NOADVANCE(status_complete);
           break;
         }
 
@@ -866,7 +870,6 @@ size_t http_parser_execute (http_parser *parser,
       case s_res_line_almost_done:
         STRICT_CHECK(ch != LF);
         parser->state = s_header_field_start;
-        CALLBACK_NOTIFY(status_complete);
         break;
 
       case s_start_req:
@@ -1133,16 +1136,16 @@ size_t http_parser_execute (http_parser *parser,
       case s_req_http_minor:
       {
         if (ch == CR) {
+          parser->state = s_req_line_almost_done;
           // JHop: Added Callback
           CALLBACK_NOTIFY(req_line_complete);
-          parser->state = s_req_line_almost_done;
           break;
         }
 
         if (ch == LF) {
+          parser->state = s_header_field_start;
           // JHop: Added Callback
           CALLBACK_NOTIFY(req_line_complete);
-          parser->state = s_header_field_start;
           break;
         }
 
@@ -1178,6 +1181,7 @@ size_t http_parser_execute (http_parser *parser,
 
       case s_header_field_start:
       {
+        printf("###HEADER FIELD BEGIN");
         if (ch == CR) {
           parser->state = s_headers_almost_done;
           break;

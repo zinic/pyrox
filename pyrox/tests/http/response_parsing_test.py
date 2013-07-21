@@ -6,11 +6,26 @@ from pyrox.http import HttpParser, ParserDelegate
 
 
 STATUS_LINE = b'HTTP/1.1 200 OK\r\n'
+STATUS_LINE_LF_ONLY = b'HTTP/1.1 200 OK\nTest: test\r\n\r\n'
 HEADER = b'Content-Length: 0\r\n'
 MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
 ARRAY_HEADER = b'Other: test, test, test\r\n'
 END = b'\r\n'
 
+
+FTEST = (
+    'HTTP/1.1 200 OK\n'
+    'Date: Wed, 17 Jul 2013 20:19:12 GMT\n'
+    'Vary: Accept-Encoding\n'
+    'Server: Apache/2.2.16\n'
+    'Connection: Keep-Alive\n'
+    'Content-Type: text/html; charset=UTF-8\n'
+    'X-Powered-By: PHP/5.3.3-7+squeeze15\n'
+    'Transfer-Encoding: chunked\n\n'
+    '4\r\n'
+    'TEST\r\n'
+    '0\r\n\r\n'
+)
 
 STATUS_CODE_SLOT = 'STATUS_CODE'
 HEADER_SLOT = 'HEADER'
@@ -83,6 +98,18 @@ class ArrayValueHeaderDelegate(ParserDelegate):
 
 class WhenParsingResponses(unittest.TestCase):
 
+    def test_ftest(self):
+        test_filter = TrackingDelegate(ValidatingDelegate(self))
+        parser = HttpParser(test_filter)
+
+        datalen = len(FTEST)
+        read = parser.execute(FTEST, datalen)
+        self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            STATUS_CODE_SLOT: 1,
+            HEADER_SLOT: 7}, self)
+        self.fail()
+
     def test_read_status_line(self):
         test_filter = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpParser(test_filter)
@@ -90,9 +117,64 @@ class WhenParsingResponses(unittest.TestCase):
         datalen = len(STATUS_LINE)
         read = parser.execute(STATUS_LINE, datalen)
         self.assertEquals(datalen, read)
+        parser.execute(HEADER, len(HEADER))
+        parser.execute(END, len(END))
         test_filter.validate_hits({
             STATUS_CODE_SLOT: 1,
-            HEADER_SLOT: 0}, self)
+            HEADER_SLOT: 1}, self)
+
+    def test_read_status_line_with_lf_only(self):
+        test_filter = TrackingDelegate(ValidatingDelegate(self))
+        parser = HttpParser(test_filter)
+
+        datalen = len(STATUS_LINE_LF_ONLY)
+        read = parser.execute(STATUS_LINE_LF_ONLY, datalen)
+        self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            STATUS_CODE_SLOT: 1,
+            HEADER_SLOT: 1}, self)
+
+    def test_read_response_header(self):
+        test_filter = TrackingDelegate(ValidatingDelegate(self))
+        parser = HttpParser(test_filter)
+
+        parser.execute(STATUS_LINE, len(STATUS_LINE))
+
+        datalen = len(HEADER)
+        read = parser.execute(HEADER, datalen)
+        parser.execute(END, len(END))
+        self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            STATUS_CODE_SLOT: 1,
+            HEADER_SLOT: 1}, self)
+
+    def test_read_multi_value_header(self):
+        test_filter = TrackingDelegate(MultiValueHeaderDelegate(self))
+        parser = HttpParser(test_filter)
+
+        parser.execute(STATUS_LINE, len(STATUS_LINE))
+
+        datalen = len(MULTI_VALUE_HEADER)
+        read = parser.execute(MULTI_VALUE_HEADER, datalen)
+        parser.execute(END, len(END))
+        self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            STATUS_CODE_SLOT: 1,
+            HEADER_SLOT: 2}, self)
+
+    def test_read_array_value_header(self):
+        test_filter = TrackingDelegate(ArrayValueHeaderDelegate(self))
+        parser = HttpParser(test_filter)
+
+        parser.execute(STATUS_LINE, len(STATUS_LINE))
+
+        datalen = len(ARRAY_HEADER)
+        read = parser.execute(ARRAY_HEADER, datalen)
+        parser.execute(END, len(END))
+        self.assertEquals(datalen, read)
+        test_filter.validate_hits({
+            STATUS_CODE_SLOT: 1,
+            HEADER_SLOT: 1}, self)
 
 
 if __name__ == '__main__':
