@@ -47,8 +47,8 @@ def package_c():
     extensions = list()
     extensions.append(Extension(
         'pyrox.http.parser',
-        include_dirs=['include/http-parser'],
-        sources=['include/http-parser/http_parser.c', 'pyrox/http/parser.c']))
+        include_dirs=['include/'],
+        sources=['include/http_el.c', 'pyrox/http/parser.c']))
     return extensions
 
 ext_modules = None

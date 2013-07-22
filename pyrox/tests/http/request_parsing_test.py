@@ -1,6 +1,6 @@
 import unittest
 
-from pyrox.http import HttpParser, ParserDelegate
+from pyrox.http import HttpEventParser, ParserDelegate
 
 
 REQUEST_LINE = b'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
@@ -34,13 +34,13 @@ class TrackingDelegate(ParserDelegate):
             test.assertEquals(
                 expected[key],
                 self.hits[key],
-                'Failed on expected hits for key: {}'.format(key))
+                'Failed on expected hits for key: {} - was {} expected {}'.format(key, self.hits[key], expected[key]))
 
     def on_req_method(self, method):
         self.register_hit(REQUEST_METHOD_SLOT)
         self.delegate.on_req_method(method)
 
-    def on_url(self, url):
+    def on_req_path(self, url):
         self.register_hit(REQUEST_URI_SLOT)
         self.delegate.on_url(url)
 
@@ -57,7 +57,7 @@ class ValidatingDelegate(ParserDelegate):
     def on_req_method(self, method):
         self.test.assertEquals('GET', method)
 
-    def on_url(self, url):
+    def on_req_path(self, url):
         self.test.assertEquals('/test/12345?field=f1&field2=f2#fragment', url)
 
     def on_header(self, name, value):
@@ -95,74 +95,15 @@ class ArrayValueHeaderDelegate(ParserDelegate):
 class WhenParsingRequests(unittest.TestCase):
 
     def test_init(self):
-        parser = HttpParser(None)
+        parser = HttpEventParser(None)
 
-    def test_read_request_line(self):
-        test_filter = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpParser(test_filter)
-
-        datalen = len(REQUEST_LINE)
-        read = parser.execute(REQUEST_LINE, datalen)
-        self.assertEquals(datalen, read)
-        test_filter.validate_hits({
+    def test_request_method(self):
+        tracker = TrackingDelegate(ValidatingDelegate(self))
+        parser = HttpEventParser(tracker)
+        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
+        tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,
             REQUEST_URI_SLOT: 1}, self)
-
-    def test_read_partial_request_line(self):
-        test_filter = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpParser(test_filter)
-
-        datalen = len(REQUEST_LINE) / 2
-        read = parser.execute(REQUEST_LINE[:datalen], datalen)
-        self.assertEquals(datalen, read)
-        test_filter.validate_hits({
-            REQUEST_METHOD_SLOT: 1,
-            REQUEST_URI_SLOT: 0}, self)
-
-    def test_read_request_header(self):
-        test_filter = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpParser(test_filter)
-
-        read = parser.execute(REQUEST_LINE, len(REQUEST_LINE))
-
-        datalen = len(HEADER)
-        read = parser.execute(HEADER, datalen)
-        parser.execute(END, len(END))
-        self.assertEquals(datalen, read)
-        test_filter.validate_hits({
-            REQUEST_METHOD_SLOT: 1,
-            REQUEST_URI_SLOT: 1,
-            HEADER_SLOT: 1}, self)
-
-    def test_read_multi_value_header(self):
-        test_filter = TrackingDelegate(MultiValueHeaderDelegate(self))
-        parser = HttpParser(test_filter)
-
-        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
-
-        datalen = len(MULTI_VALUE_HEADER)
-        read = parser.execute(MULTI_VALUE_HEADER, datalen)
-        parser.execute(END, len(END))
-        self.assertEquals(datalen, read)
-        test_filter.validate_hits({
-            REQUEST_METHOD_SLOT: 1,
-            REQUEST_URI_SLOT: 1,
-            HEADER_SLOT: 2}, self)
-
-    def test_read_array_value_header(self):
-        test_filter = TrackingDelegate(ArrayValueHeaderDelegate(self))
-        parser = HttpParser(test_filter)
-
-        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
-
-        datalen = len(ARRAY_HEADER)
-        read = parser.execute(ARRAY_HEADER, datalen)
-        parser.execute(END, len(END))
-        self.assertEquals(datalen, read)
-        test_filter.validate_hits({
-            REQUEST_METHOD_SLOT: 1,
-            REQUEST_URI_SLOT: 1,
-            HEADER_SLOT: 1}, self)
 
 
 if __name__ == '__main__':
