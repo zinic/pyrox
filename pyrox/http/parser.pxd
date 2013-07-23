@@ -6,6 +6,8 @@ cdef extern from "http_el.h":
     cdef struct http_parser:
         unsigned long content_length
         void *app_data
+        short http_major
+        short http_minor
 
     ctypedef int (*http_data_cb) (http_parser*, char *at, size_t length)
     ctypedef int (*http_cb) (http_parser*)
@@ -14,7 +16,7 @@ cdef extern from "http_el.h":
         http_cb           on_message_begin
         http_data_cb      on_req_method
         http_data_cb      on_req_path
-        http_data_cb      on_http_version
+        http_cb      on_req_http_version
         http_data_cb      on_status
         http_data_cb      on_header_field
         http_data_cb      on_header_value

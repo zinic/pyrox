@@ -89,7 +89,11 @@ enum http_el_state {
     s_req_start,
     s_req_method,
     s_req_path,
-    s_req_http_version,
+    s_req_http_version_head,
+    s_req_http_version_major,
+    s_req_http_version_minor,
+    s_req_header_field,
+    s_req_header_value,
 
     // Reponse states
     s_resp_start
@@ -151,38 +155,85 @@ int store_byte(char byte, http_parser *parser) {
     return store_byte_in_pbuffer(byte, parser->buffer);
 }
 
-void on_data_cb(http_parser *parser, http_data_cb cb) {
-    cb(parser, parser->buffer->bytes, parser->buffer->position);
+int on_cb(http_parser *parser, http_cb cb) {
+    return cb(parser);
 }
 
-int start_request(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+int on_data_cb(http_parser *parser, http_data_cb cb) {
+    return cb(parser, parser->buffer->bytes, parser->buffer->position);
+}
+
+// Request processing
+
+int read_request_header_field(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
 
-    if (!IS_ALPHA(next_byte)) {
-        errno = ELERR_BAD_METHOD;
-    } else {
-        errno = store_byte(next_byte, parser);
+    return errno;
+}
 
-        // Move to the actual function for this
-        parser->state = s_req_method;
+int read_request_http_version_minor(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+
+    if (IS_NUM(next_byte)) {
+        parser->http_minor *= 10;
+        parser->http_minor += next_byte - '0';
+
+        if (parser->http_minor > 999) {
+            errno = ELERR_BAD_HTTP_VERSION_MINOR;
+        }
+    } else {
+        switch (next_byte) {
+            case CR:
+                break;
+
+            case LF:
+                errno = on_cb(parser, settings->on_req_http_version);
+                reset_buffer(parser);
+                parser->state = s_req_header_field;
+            break;
+
+            default:
+                errno = ELERR_BAD_PATH_CHARACTER;
+        }
     }
 
     return errno;
 }
 
-int read_request_method(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+int read_request_http_version_major(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
 
-    if (next_byte == SPACE) {
-        on_data_cb(parser, settings->on_req_method);
-        reset_buffer(parser);
+    if (IS_NUM(next_byte)) {
+        parser->http_major *= 10;
+        parser->http_major += next_byte - '0';
 
-        // Read the URI next
-        parser->state = s_req_path;
-    } else if (IS_ALPHA(next_byte)) {
-        errno = store_byte(next_byte, parser);
+        if (parser->http_major > 999) {
+            errno = ELERR_BAD_HTTP_VERSION_MAJOR;
+        }
     } else {
-        errno = ELERR_BAD_METHOD;
+        switch (next_byte) {
+            case '.':
+                parser->state = s_req_http_version_minor;
+                break;
+
+            case CR:
+            case LF:
+            default:
+                errno = ELERR_BAD_PATH_CHARACTER;
+        }
+    }
+
+    return errno;
+}
+
+int read_request_http_version_head(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+
+    if (next_byte == '/') {
+        parser->state = s_req_http_version_major;
+    } else if (!IS_ALPHA(next_byte)) {
+        printf("%c", next_byte);
+        errno = ELERR_BAD_HTTP_VERSION_HEAD;
     }
 
     return errno;
@@ -191,36 +242,54 @@ int read_request_method(http_parser *parser, const http_parser_settings *setting
 int read_request_path(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
 
-    if (next_byte == SPACE) {
-        on_data_cb(parser, settings->on_req_path);
-        reset_buffer(parser);
-
-        // Head right on over to the HTTP version next
-        parser->state = s_req_http_version;
-    } else if (IS_URL_CHAR(next_byte)) {
+    if (IS_URL_CHAR(next_byte)) {
         errno = store_byte(next_byte, parser);
     } else {
-        errno = ELERR_BAD_PATH_CHARACTER;
+        switch (next_byte) {
+            case SPACE:
+                errno = on_data_cb(parser, settings->on_req_path);
+                reset_buffer(parser);
+
+                // Head right on over to the HTTP version next
+                parser->state = s_req_http_version_head;
+                break;
+
+            default:
+                errno = ELERR_BAD_PATH_CHARACTER;
+        }
     }
 
     return errno;
 }
 
-int read_request_http_version(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-    int errno = 0;
-    printf("ass %c\n", next_byte);
-    if (next_byte == SPACE) {
-        on_data_cb(parser, settings->on_req_path);
-        reset_buffer(parser);
 
-        parser->state = s_req_http_version;
-    } else if (IS_URL_CHAR(next_byte)) {
+int read_request_method(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+
+    if (IS_ALPHA(next_byte)) {
         errno = store_byte(next_byte, parser);
     } else {
-        errno = ELERR_BAD_PATH_CHARACTER;
+        switch (next_byte) {
+            case SPACE:
+                errno = on_data_cb(parser, settings->on_req_method);
+                reset_buffer(parser);
+
+                // Read the URI next
+                parser->state = s_req_path;
+                break;
+
+            default:
+                errno = ELERR_BAD_METHOD;
+        }
     }
 
     return errno;
+}
+
+int start_request(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    // Set state before calling the next function incase the function sets the state
+    parser->state = s_req_method;
+    return read_request_method(parser, settings, next_byte);
 }
 
 int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
@@ -243,8 +312,19 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
                 errno = read_request_path(parser, settings, next_byte);
                 break;
 
-            case s_req_http_version:
-                errno = read_request_http_version(parser, settings, next_byte);
+            case s_req_http_version_head:
+                errno = read_request_http_version_head(parser, settings, next_byte);
+                break;
+
+            case s_req_http_version_major:
+                errno = read_request_http_version_major(parser, settings, next_byte);
+                break;
+
+            case s_req_http_version_minor:
+                errno = read_request_http_version_minor(parser, settings, next_byte);
+                break;
+
+            case s_req_header_field:
                 break;
 
             default:
@@ -259,6 +339,9 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
 
     return errno;
 }
+
+
+// Response processing
 
 
 int start_response(http_parser *parser, const http_parser_settings *settings, char next_byte) {

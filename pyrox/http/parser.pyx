@@ -20,6 +20,14 @@ cdef int on_req_path(http_parser *parser, char *data, size_t length):
         pass
     return 0
 
+cdef int on_req_http_version(http_parser *parser):
+    cdef object app_data = <object> parser.app_data
+    try:
+        app_data.delegate.on_req_http_version(parser.http_major, parser.http_minor)
+    except Exception as ex:
+        pass
+    return 0
+
 
 class ParserDelegate(object):
 
@@ -27,6 +35,9 @@ class ParserDelegate(object):
         pass
 
     def on_req_method(self, method):
+        pass
+
+    def on_req_http_version(self, major, minor):
         pass
 
     def on_req_path(self, url):
@@ -83,7 +94,7 @@ cdef class HttpEventParser(object):
         # set callbacks
         self._settings.on_req_method = <http_data_cb>on_req_method
         self._settings.on_req_path = <http_data_cb>on_req_path
-        #self._settings.on_req_line_complete = <http_cb>on_req_line_complete
+        self._settings.on_req_http_version = <http_cb>on_req_http_version
         #self._settings.on_status_complete = <http_cb>on_status_complete
         #self._settings.on_body = <http_data_cb>on_body_cb
         #self._settings.on_header_field = <http_data_cb>on_header_field_cb

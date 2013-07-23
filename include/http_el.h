@@ -36,12 +36,14 @@ enum flags {
     F_SKIPBODY              = 1 << 3
 };
 
-
 enum HTTP_EL_ERROR {
     ELERR_UNCAUGHT = 1,
     ELERR_BAD_PARSER_TYPE = 2,
     ELERR_BAD_STATE = 3,
     ELERR_BAD_PATH_CHARACTER = 4,
+    ELERR_BAD_HTTP_VERSION_HEAD = 5,
+    ELERR_BAD_HTTP_VERSION_MAJOR = 6,
+    ELERR_BAD_HTTP_VERSION_MINOR = 7,
 
     ELERR_BAD_METHOD = 100,
 
@@ -56,12 +58,11 @@ struct pbuffer {
     size_t size;
 };
 
-
 struct http_parser_settings {
     http_cb           on_message_begin;
     http_data_cb      on_req_method;
     http_data_cb      on_req_path;
-    http_cb           on_http_version;
+    http_cb           on_req_http_version;
     http_data_cb      on_status;
     http_data_cb      on_header_field;
     http_data_cb      on_header_value;

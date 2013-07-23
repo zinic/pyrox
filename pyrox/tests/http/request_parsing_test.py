@@ -12,6 +12,7 @@ END = b'\r\n'
 
 REQUEST_METHOD_SLOT = 'REQUEST_METHOD'
 REQUEST_URI_SLOT = 'REQUEST_URI'
+REQUEST_HTTP_VERSION_SLOT = 'REQUEST_HTTP_VERSION'
 HEADER_SLOT = 'HEADER'
 
 
@@ -21,6 +22,7 @@ class TrackingDelegate(ParserDelegate):
         self.hits = {
             REQUEST_METHOD_SLOT: 0,
             REQUEST_URI_SLOT: 0,
+            REQUEST_HTTP_VERSION_SLOT: 0,
             HEADER_SLOT: 0
         }
 
@@ -44,6 +46,10 @@ class TrackingDelegate(ParserDelegate):
         self.register_hit(REQUEST_URI_SLOT)
         self.delegate.on_url(url)
 
+    def on_req_http_version(self, major, minor):
+        self.register_hit(REQUEST_HTTP_VERSION_SLOT)
+        self.delegate.on_req_http_version(major, minor)
+
     def on_header(self, name, value):
         self.register_hit(HEADER_SLOT)
         self.delegate.on_header(name, value)
@@ -59,6 +65,10 @@ class ValidatingDelegate(ParserDelegate):
 
     def on_req_path(self, url):
         self.test.assertEquals('/test/12345?field=f1&field2=f2#fragment', url)
+
+    def on_req_http_version(self, major, minor):
+        self.test.assertEquals(1, major)
+        self.test.assertEquals(1, minor)
 
     def on_header(self, name, value):
         self.test.assertEquals('Content-Length', name)
@@ -97,13 +107,14 @@ class WhenParsingRequests(unittest.TestCase):
     def test_init(self):
         parser = HttpEventParser(None)
 
-    def test_request_method(self):
+    def test_simple_request_line(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpEventParser(tracker)
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
         tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,
-            REQUEST_URI_SLOT: 1}, self)
+            REQUEST_URI_SLOT: 1,
+            REQUEST_HTTP_VERSION_SLOT: 1}, self)
 
 
 if __name__ == '__main__':
