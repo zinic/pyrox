@@ -116,6 +116,15 @@ class WhenParsingRequests(unittest.TestCase):
             REQUEST_URI_SLOT: 1,
             REQUEST_HTTP_VERSION_SLOT: 1}, self)
 
+    def test_header(self):
+        tracker = TrackingDelegate(ValidatingDelegate(self))
+        parser = HttpEventParser(tracker)
+        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
+        tracker.validate_hits({
+            REQUEST_METHOD_SLOT: 1,
+            REQUEST_URI_SLOT: 1,
+            REQUEST_HTTP_VERSION_SLOT: 1}, self)
+
 
 if __name__ == '__main__':
     unittest.main()

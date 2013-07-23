@@ -28,6 +28,24 @@ cdef int on_req_http_version(http_parser *parser):
         pass
     return 0
 
+cdef int on_header_field(http_parser *parser, char *data, size_t length):
+    cdef object app_data = <object> parser.app_data
+    cdef object header_field = PyBytes_FromStringAndSize(data, length)
+    try:
+        app_data.delegate.on_header_field(header_field)
+    except Exception as ex:
+        pass
+    return 0
+
+cdef int on_header_value(http_parser *parser, char *data, size_t length):
+    cdef object app_data = <object> parser.app_data
+    cdef object header_value = PyBytes_FromStringAndSize(data, length)
+    try:
+        app_data.delegate.on_header_value(header_value)
+    except Exception as ex:
+        pass
+    return 0
+
 
 class ParserDelegate(object):
 
@@ -43,13 +61,10 @@ class ParserDelegate(object):
     def on_req_path(self, url):
         pass
 
-    def on_header(self, name, value):
+    def on_header_field(self, field):
         pass
 
-    def on_headers_complete(self):
-        pass
-
-    def on_body_begin(self):
+    def on_header_value(self, value):
         pass
 
     def on_body(self, bytes):
@@ -95,10 +110,9 @@ cdef class HttpEventParser(object):
         self._settings.on_req_method = <http_data_cb>on_req_method
         self._settings.on_req_path = <http_data_cb>on_req_path
         self._settings.on_req_http_version = <http_cb>on_req_http_version
-        #self._settings.on_status_complete = <http_cb>on_status_complete
         #self._settings.on_body = <http_data_cb>on_body_cb
-        #self._settings.on_header_field = <http_data_cb>on_header_field_cb
-        #self._settings.on_header_value = <http_data_cb>on_header_value_cb
+        self._settings.on_header_field = <http_data_cb>on_header_field
+        self._settings.on_header_value = <http_data_cb>on_header_value
         #self._settings.on_headers_complete = <http_cb>on_headers_complete_cb
         #self._settings.on_message_begin = <http_cb>on_message_begin_cb
         #self._settings.on_message_complete = <http_cb>on_message_complete_cb
