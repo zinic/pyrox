@@ -72,10 +72,15 @@ struct http_parser_settings {
 };
 
 struct http_parser {
+    // Parser fields
     unsigned char flags : 4;
     unsigned char http_errno;
     unsigned char state;
+    unsigned char header_state;
     unsigned char type;
+    unsigned char index;
+
+    // Reserved fields
     unsigned long content_length;
 
     // HTTP version info
@@ -86,8 +91,10 @@ struct http_parser {
     // Reponse specific
     unsigned short status_code;
 
+    // Buffer
     pbuffer *buffer;
 
+    // Optionally settable application data pointer
     void *app_data;
 };
 

@@ -13,7 +13,8 @@ END = b'\r\n'
 REQUEST_METHOD_SLOT = 'REQUEST_METHOD'
 REQUEST_URI_SLOT = 'REQUEST_URI'
 REQUEST_HTTP_VERSION_SLOT = 'REQUEST_HTTP_VERSION'
-HEADER_SLOT = 'HEADER'
+HEADER_FIELD_SLOT = 'HEADER_FIELD'
+HEADER_VALUE_SLOT = 'HEADER_VALUE'
 
 
 class TrackingDelegate(ParserDelegate):
@@ -23,7 +24,8 @@ class TrackingDelegate(ParserDelegate):
             REQUEST_METHOD_SLOT: 0,
             REQUEST_URI_SLOT: 0,
             REQUEST_HTTP_VERSION_SLOT: 0,
-            HEADER_SLOT: 0
+            HEADER_FIELD_SLOT: 0,
+            HEADER_VALUE_SLOT: 0,
         }
 
         self.delegate = delegate
@@ -50,9 +52,13 @@ class TrackingDelegate(ParserDelegate):
         self.register_hit(REQUEST_HTTP_VERSION_SLOT)
         self.delegate.on_req_http_version(major, minor)
 
-    def on_header(self, name, value):
-        self.register_hit(HEADER_SLOT)
-        self.delegate.on_header(name, value)
+    def on_header_field(self, field):
+        self.register_hit(HEADER_FIELD_SLOT)
+        self.delegate.on_header_field(field)
+
+    def on_header_value(self, value):
+        self.register_hit(HEADER_VALUE_SLOT)
+        self.delegate.on_header_value(value)
 
 
 class ValidatingDelegate(ParserDelegate):
@@ -70,8 +76,10 @@ class ValidatingDelegate(ParserDelegate):
         self.test.assertEquals(1, major)
         self.test.assertEquals(1, minor)
 
-    def on_header(self, name, value):
-        self.test.assertEquals('Content-Length', name)
+    def on_header_field(self, field):
+        self.test.assertEquals('Content-Length', field)
+
+    def on_header_value(self, value):
         self.test.assertEquals('0', value)
 
 
@@ -110,7 +118,9 @@ class WhenParsingRequests(unittest.TestCase):
     def test_simple_request_line(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpEventParser(tracker)
+
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
+
         tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,
             REQUEST_URI_SLOT: 1,
@@ -119,11 +129,17 @@ class WhenParsingRequests(unittest.TestCase):
     def test_header(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpEventParser(tracker)
+
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
+        parser.execute(HEADER, len(HEADER))
+        parser.execute(HEADER, len(HEADER))
+
         tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,
             REQUEST_URI_SLOT: 1,
-            REQUEST_HTTP_VERSION_SLOT: 1}, self)
+            REQUEST_HTTP_VERSION_SLOT: 1,
+            HEADER_FIELD_SLOT: 2,
+            HEADER_VALUE_SLOT: 2}, self)
 
 
 if __name__ == '__main__':

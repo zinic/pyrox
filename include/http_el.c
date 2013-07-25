@@ -12,6 +12,7 @@
 #endif
 
 #define PROXY_CONNECTION "proxy-connection"
+#define CON = "con"
 #define CONNECTION "connection"
 #define CONTENT_LENGTH "content-length"
 #define TRANSFER_ENCODING "transfer-encoding"
@@ -139,21 +140,8 @@ static const uint8_t normal_url_char[32] = {
 #define IS_URL_CHAR(c) (BIT_AT(normal_url_char, (unsigned char)c) || ((c) & 0x80))
 #define IS_HOST_CHAR(c) (IS_ALPHANUM(c) || (c) == '.' || (c) == '-' || (c) == '_')
 
-enum http_el_state {
-    // Request states
-    s_req_start,
-    s_req_method,
-    s_req_path,
-    s_req_http_version_head,
-    s_req_http_version_major,
-    s_req_http_version_minor,
-    s_req_header_field,
-    s_req_header_value,
-    s_req_body,
 
-    // Reponse states
-    s_resp_start
-};
+// Supporting functions
 
 pbuffer * init_pbuffer(size_t size) {
     pbuffer *buffer = (pbuffer *) malloc(sizeof(pbuffer));
@@ -219,7 +207,50 @@ int on_data_cb(http_parser *parser, http_data_cb cb) {
     return cb(parser, parser->buffer->bytes, parser->buffer->position);
 }
 
+
+// States
+
+enum http_el_state {
+    // Request states
+    s_req_start,
+    s_req_method,
+    s_req_path,
+    s_req_http_version_head,
+    s_req_http_version_major,
+    s_req_http_version_minor,
+    s_req_header_field,
+    s_req_header_value,
+    s_req_body,
+
+    // Common states
+    s_stream,
+
+    // Reponse states
+    s_resp_start
+};
+
+enum header_state {
+    // Header states
+    h_start,
+
+    h_general,
+    h_content_length,
+    h_connection,
+    h_transfer_encoding,
+
+    h_matching_transfer_encoding,
+    h_matching_con,
+    h_matching_content_length,
+    h_matching_connection
+};
+
+
 // Request processing
+int read_request_body(http_parser *parser, const http_parser_settings *settings, char *data) {
+    int errno = 0;
+
+    return errno;
+}
 
 int read_request_header_value(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
@@ -231,7 +262,7 @@ int read_request_header_value(http_parser *parser, const http_parser_settings *s
         case LF:
             errno = on_data_cb(parser, settings->on_header_value);
             reset_buffer(parser);
-            parser->state = s_req_body;
+            parser->state = s_req_header_field;
             break;
 
         default:
@@ -241,22 +272,24 @@ int read_request_header_value(http_parser *parser, const http_parser_settings *s
     return errno;
 }
 
-int read_request_header_field(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+int read_content_length_or_connection_header(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+}
+
+int read_header_field_start(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
-    char token;
+    char byte_as_lower = LOWER(next_byte);
 
     switch (next_byte) {
-        case CR:
+        case 'c':
+            // potentially connection or content-length
+            errno = store_byte(next_byte, parser);
+            parser->header_state = h_matching_con
             break;
 
-        case LF:
-            parser->state = s_req_body;
-            break;
-
-        case ':':
-            errno = on_data_cb(parser, settings->on_header_field);
-            reset_buffer(parser);
-            parser->state = s_req_header_field;
+        case 't':
+            // potentially transfer-encoding
+            errno = store_byte(next_byte, parser);
+            parser->header_state = h_matching_transfer_encoding
             break;
 
         default:
@@ -267,6 +300,95 @@ int read_request_header_field(http_parser *parser, const http_parser_settings *s
             } else {
                 errno = store_byte(next_byte, parser);
             }
+    }
+
+    return errno;
+}
+
+int read_header_field_by_state(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+    char lower = LOWER(next_byte);
+
+    switch (parser->header_state) {
+        case h_start:
+            errno = read_header_field_start(parser, settings, next_byte);
+            break;
+
+        case h_matching_transfer_encoding:
+            // potentially transfer-encoding
+            parser->index += 1;
+            if (parser->index > sizeof(TRANSFER_ENCODING)-1 || lower != TRANSFER_ENCODING[parser->index]) {
+                parser->header_state = h_general;
+            } else if (parser->index == sizeof(TRANSFER_ENCODING)-2) {
+                parser->header_state = h_transfer_encoding;
+            }
+            break;
+
+        case h_matching_con:
+            // potentially content-length or connection
+            parser->index += 1;
+            if (parser->index < sizeof(CON)) {
+            } else if (lower == CON[parser->index]) {
+                parser->header_state = h_general;
+            } else if (parser->index == sizeof(TRANSFER_ENCODING)-2) {
+                parser->header_state = h_transfer_encoding;
+            }
+            break;
+
+        case h_matching_content_length:
+            parser->index += 1;
+            if (parser->index > sizeof(CONTENT_LENGTH)-1 || lower != CONTENT_LENGTH[parser->index]) {
+                parser->header_state = h_general;
+            } else if (parser->index == sizeof(CONTENT_LENGTH)-2) {
+                parser->header_state = h_content_length;
+            }
+            break;
+
+        case h_matching_connection:
+            parser->index += 1;
+            if (parser->index > sizeof(CONNECTION)-1 || lower != CONNECTION[parser->index]) {
+                parser->header_state = h_general;
+            } else if (parser->index == sizeof(CONNECTION)-2) {
+                parser->header_state = h_connection;
+            }
+            break;
+
+        default:
+            token = TOKEN(next_byte);
+
+            if (!token) {
+                errno = ELERR_BAD_HEADER_TOKEN;
+            } else {
+                errno = store_byte(next_byte, parser);
+            }
+    }
+
+    return errno;
+}
+
+int read_header_field(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+    char token;
+
+    switch (next_byte) {
+        case CR:
+            break;
+
+        case LF:
+            parser->index = 0;
+            parser->state = s_req_body;
+            break;
+
+        case ':':
+            errno = on_data_cb(parser, settings->on_header_field);
+            reset_buffer(parser);
+
+            parser->index = 0;
+            parser->state = s_req_header_value;
+            break;
+
+        default:
+            errno = read_header_field_by_state(parser, settings, next_byte);
     }
 
     return errno;
@@ -333,7 +455,6 @@ int read_request_http_version_head(http_parser *parser, const http_parser_settin
     if (next_byte == '/') {
         parser->state = s_req_http_version_major;
     } else if (!IS_ALPHA(next_byte)) {
-        printf("%c", next_byte);
         errno = ELERR_BAD_HTTP_VERSION_HEAD;
     }
 
@@ -442,6 +563,7 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
 
         // If errno evals to true then an error was set
         if (errno) {
+            printf("Bad token found %c\n", next_byte);
             break;
         }
     }
