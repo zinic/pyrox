@@ -12,7 +12,7 @@
 #endif
 
 #define PROXY_CONNECTION "proxy-connection"
-#define CON = "con"
+#define CON "con"
 #define CONNECTION "connection"
 #define CONTENT_LENGTH "content-length"
 #define TRANSFER_ENCODING "transfer-encoding"
@@ -141,6 +141,56 @@ static const uint8_t normal_url_char[32] = {
 #define IS_HOST_CHAR(c) (IS_ALPHANUM(c) || (c) == '.' || (c) == '-' || (c) == '_')
 
 
+// States
+
+enum http_el_state {
+    // Request states
+    s_req_start,
+    s_req_method,
+    s_req_path,
+    s_req_http_version_head,
+    s_req_http_version_major,
+    s_req_http_version_minor,
+
+    // Common states
+    s_header_field_start,
+    s_header_field,
+    s_header_value,
+    s_body,
+    s_chunk_start,
+    s_chunk_size,
+    s_chunk_parameters,
+    s_chunk_data,
+    s_body_complete,
+
+    // Reponse states
+    s_resp_start
+};
+
+enum header_state {
+    // Header states
+    h_general,
+    h_content_length,
+    h_connection,
+    h_connection_keep_alive,
+    h_connection_close,
+    h_transfer_encoding,
+    h_transfer_encoding_chunked,
+
+    // Matching states
+    h_matching_transfer_encoding,
+    h_matching_transfer_encoding_chunked,
+    h_matching_con,
+    h_matching_content_length,
+    h_matching_connection,
+    h_matching_connection_keep_alive,
+    h_matching_connection_close
+};
+
+typedef enum http_el_state http_el_state;
+typedef enum header_state header_state;
+
+
 // Supporting functions
 
 pbuffer * init_pbuffer(size_t size) {
@@ -207,52 +257,269 @@ int on_data_cb(http_parser *parser, http_data_cb cb) {
     return cb(parser, parser->buffer->bytes, parser->buffer->position);
 }
 
+char * http_el_state_name(http_el_state state) {
+    switch (state) {
+        case s_req_start:
+            return "request start";
+        case s_req_method:
+            return "request method";
+        case s_req_path:
+            return "request path";
+        case s_req_http_version_head:
+            return "http version head";
+        case s_req_http_version_major:
+            return "http version major";
+        case s_req_http_version_minor:
+            return "http version minor";
+        case s_header_field_start:
+            return "header field start";
+        case s_header_field:
+            return "header field";
+        case s_header_value:
+            return "header value";
+        case s_body:
+            return "request body";
+        case s_chunk_start:
+            return "chunk start";
+        case s_chunk_size:
+            return "chunk size";
+        case s_chunk_parameters:
+            return "chunk parameters";
+        case s_chunk_data:
+            return "chunk data";
+        case s_body_complete:
+            return "body complete";
+        case s_resp_start:
+            return "response start";
 
-// States
+        default:
+            return "ERROR - NOT A STATE";
+    }
+}
 
-enum http_el_state {
-    // Request states
-    s_req_start,
-    s_req_method,
-    s_req_path,
-    s_req_http_version_head,
-    s_req_http_version_major,
-    s_req_http_version_minor,
-    s_req_header_field,
-    s_req_header_value,
-    s_req_body,
+char * http_header_state_name(header_state state) {
+    switch (state) {
+        case h_general:
+            return "general header";
+        case h_content_length:
+            return "header type content length";
+        case h_connection:
+            return "header type connection";
+        case h_connection_keep_alive:
+            return "header type connection keep alive";
+        case h_connection_close:
+            return "header type connection close";
+        case h_transfer_encoding:
+            return "header type transfer encoding";
+        case h_transfer_encoding_chunked:
+            return "header type transfer encoding chunked";
+        case h_matching_transfer_encoding:
+            return "matching header transfer encoding";
+        case h_matching_transfer_encoding_chunked:
+            return "matching header transfer encoding chunked";
+        case h_matching_con:
+            return "matching header con";
+        case h_matching_content_length:
+            return "matching header content length";
+        case h_matching_connection:
+            return "matching header connection";
+        case h_matching_connection_keep_alive:
+            return "matching header connection keep alive";
+        case h_matching_connection_close:
+            return "matching header connection close";
 
-    // Common states
-    s_stream,
+        default:
+            return "ERROR - NOT A STATE";
+    }
+}
 
-    // Reponse states
-    s_resp_start
-};
+void set_http_state(http_parser *parser, http_el_state state) {
+    printf("State changed %s\n", http_el_state_name(state));
+    parser->state = state;
+}
 
-enum header_state {
-    // Header states
-    h_start,
-
-    h_general,
-    h_content_length,
-    h_connection,
-    h_transfer_encoding,
-
-    h_matching_transfer_encoding,
-    h_matching_con,
-    h_matching_content_length,
-    h_matching_connection
-};
+void set_header_state(http_parser *parser, header_state state) {
+    printf("Header state changed %s\n", http_header_state_name(state));
+    parser->header_state = state;
+}
 
 
-// Request processing
-int read_request_body(http_parser *parser, const http_parser_settings *settings, char *data) {
+int read_request_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
+    if (parser->content_length) {
+    }
+
+    return on_data_cb(parser, settings->on_body);
+}
+
+int read_chunk_data(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
     int errno = 0;
+
+    if (parser->content_length > length) {
+        settings->on_body(parser, data, length);
+        parser->content_length -= length;
+    } else {
+
+    }
+}
+
+int read_chunk_parameters(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+
+    switch (next_byte) {
+        case CR:
+            break;
+
+        case LF:
+            if (parser->content_length == 0) {
+                parser->flags |= F_TRAILING;
+                set_http_state(parser, s_header_field_start);
+            } else {
+                set_http_state(parser, s_chunk_data);
+            }
+    }
 
     return errno;
 }
 
-int read_request_header_value(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+int read_chunk_size(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+    unsigned char unhex_val;
+    unsigned long t;
+
+    switch (next_byte) {
+        case CR:
+            break;
+
+        case LF:
+            if (parser->content_length == 0) {
+                parser->flags |= F_TRAILING;
+                set_http_state(parser, s_header_field_start);
+            } else {
+                set_http_state(parser, s_chunk_data);
+            }
+            break;
+
+        case ';':
+        case ' ':
+            set_http_state(parser, s_chunk_parameters);
+            break;
+
+        default:
+            unhex_val = unhex[(unsigned char)ch];
+
+            if (unhex_val == -1) {
+                errno = ELERR_BAD_CHUNK_SIZE;
+            } else {
+                t = parser->content_length;
+                t *= 16;
+                t += unhex_val;
+
+                // Overflow?
+                if (t < parser->content_length || t == ULLONG_MAX) {
+                    errno = ELERR_BAD_CONTENT_LENGTH;
+                } else {
+                    parser->content_length = t;
+                }
+            }
+    }
+
+    return errno;
+}
+
+int read_chunk_start(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+    unsigned char unhex_val = unhex[(unsigned char)ch];
+
+    if (unhex_val == -1) {
+        errno = ELERR_BAD_CHUNK_SIZE;
+    } else {
+        parser->content_length = unhex_val;
+        parser->state = s_chunk_size;
+    }
+
+    return errno;
+}
+
+int process_header_by_state(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+    unsigned long t;
+    char lower = LOWER(next_byte);
+
+    switch (parser->header_state) {
+        case h_transfer_encoding:
+            if (lower == 'c') {
+                set_header_state(parser, h_matching_transfer_encoding_chunked);
+            } else {
+                set_header_state(parser, h_general);
+            }
+
+            errno = store_byte(next_byte, parser);
+            break;
+
+        case h_connection:
+            if (lower == 'k') {
+                set_header_state(parser, h_matching_connection_keep_alive);
+            } else {
+                set_header_state(parser, h_general);
+            }
+
+            errno = store_byte(next_byte, parser);
+            break;
+
+        case h_matching_transfer_encoding_chunked:
+            parser->index += 1;
+            if (parser->index > sizeof(CHUNKED) - 1 || lower != CHUNKED[parser->index]) {
+                set_header_state(parser, h_general);
+            } else if (parser->index == sizeof(CHUNKED) - 2) {
+                parser->flags |= F_CHUNKED;
+            }
+
+            errno = store_byte(next_byte, parser);
+            break;
+
+        case h_matching_connection_keep_alive:
+            parser->index += 1;
+            if (parser->index > sizeof(KEEP_ALIVE) - 1 || lower != KEEP_ALIVE[parser->index]) {
+                set_header_state(parser, h_general);
+            } else if (parser->index == sizeof(KEEP_ALIVE) - 2) {
+                parser->flags |= F_CONNECTION_KEEP_ALIVE;
+            }
+
+            errno = store_byte(next_byte, parser);
+            break;
+
+        case h_content_length:
+            // TODO(Complexity): refactor into function
+            if (next_byte != ' ') {
+                if (!IS_NUM(next_byte)) {
+                    errno = ELERR_BAD_CONTENT_LENGTH;
+                } else {
+                    t = parser->content_length;
+                    t *= 10;
+                    t += next_byte - '0';
+
+                    /* Overflow? */
+                    if (t < parser->content_length || t == ULLONG_MAX) {
+                        errno = ELERR_BAD_CONTENT_LENGTH;
+                    } else {
+                        parser->content_length = t;
+                        errno = store_byte(next_byte, parser);
+                    }
+                }
+            } else {
+                errno = store_byte(next_byte, parser);
+            }
+            break;
+
+        case h_general:
+        default:
+            errno = store_byte(next_byte, parser);
+    }
+
+    return errno;
+}
+
+int read_header_value(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
 
     switch (next_byte) {
@@ -262,97 +529,73 @@ int read_request_header_value(http_parser *parser, const http_parser_settings *s
         case LF:
             errno = on_data_cb(parser, settings->on_header_value);
             reset_buffer(parser);
-            parser->state = s_req_header_field;
+            set_http_state(parser, s_header_field_start);
+            set_header_state(parser, h_general);
             break;
 
         default:
-            errno = store_byte(next_byte, parser);
+            errno = process_header_by_state(parser, settings, next_byte);
     }
 
     return errno;
 }
 
-int read_content_length_or_connection_header(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-}
-
-int read_header_field_start(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+int read_header_field_by_state(http_parser *parser, const http_parser_settings *settings, char next_byte, char lower) {
     int errno = 0;
-    char byte_as_lower = LOWER(next_byte);
-
-    switch (next_byte) {
-        case 'c':
-            // potentially connection or content-length
-            errno = store_byte(next_byte, parser);
-            parser->header_state = h_matching_con
-            break;
-
-        case 't':
-            // potentially transfer-encoding
-            errno = store_byte(next_byte, parser);
-            parser->header_state = h_matching_transfer_encoding
-            break;
-
-        default:
-            token = TOKEN(next_byte);
-
-            if (!token) {
-                errno = ELERR_BAD_HEADER_TOKEN;
-            } else {
-                errno = store_byte(next_byte, parser);
-            }
-    }
-
-    return errno;
-}
-
-int read_header_field_by_state(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-    int errno = 0;
-    char lower = LOWER(next_byte);
+    char token;
 
     switch (parser->header_state) {
-        case h_start:
-            errno = read_header_field_start(parser, settings, next_byte);
-            break;
-
         case h_matching_transfer_encoding:
-            // potentially transfer-encoding
             parser->index += 1;
-            if (parser->index > sizeof(TRANSFER_ENCODING)-1 || lower != TRANSFER_ENCODING[parser->index]) {
-                parser->header_state = h_general;
-            } else if (parser->index == sizeof(TRANSFER_ENCODING)-2) {
-                parser->header_state = h_transfer_encoding;
+            if (parser->index > sizeof(TRANSFER_ENCODING) - 1 || lower != TRANSFER_ENCODING[parser->index]) {
+                set_header_state(parser, h_general);
+            } else if (parser->index == sizeof(TRANSFER_ENCODING) - 2) {
+                set_header_state(parser, h_transfer_encoding);
             }
+
+            errno = store_byte(next_byte, parser);
             break;
 
         case h_matching_con:
-            // potentially content-length or connection
             parser->index += 1;
-            if (parser->index < sizeof(CON)) {
-            } else if (lower == CON[parser->index]) {
-                parser->header_state = h_general;
-            } else if (parser->index == sizeof(TRANSFER_ENCODING)-2) {
-                parser->header_state = h_transfer_encoding;
+            if (parser->index < sizeof(CON) - 1 && lower != CON[parser->index]) {
+                set_header_state(parser, h_general);
+            } else if (parser->index == sizeof(CON) - 1) {
+                if (lower == CONTENT_LENGTH[parser->index]) {
+                    set_header_state(parser, h_matching_content_length);
+                } else if (lower == CONNECTION[parser->index]) {
+                    set_header_state(parser, h_matching_connection);
+                } else {
+                    set_header_state(parser, h_general);
+                }
             }
+
+            errno = store_byte(next_byte, parser);
             break;
 
         case h_matching_content_length:
             parser->index += 1;
-            if (parser->index > sizeof(CONTENT_LENGTH)-1 || lower != CONTENT_LENGTH[parser->index]) {
-                parser->header_state = h_general;
-            } else if (parser->index == sizeof(CONTENT_LENGTH)-2) {
-                parser->header_state = h_content_length;
+            if (parser->index > sizeof(CONTENT_LENGTH) - 1 || lower != CONTENT_LENGTH[parser->index]) {
+                set_header_state(parser, h_general);
+            } else if (parser->index == sizeof(CONTENT_LENGTH) - 2) {
+                set_header_state(parser, h_content_length);
             }
+
+            errno = store_byte(next_byte, parser);
             break;
 
         case h_matching_connection:
             parser->index += 1;
-            if (parser->index > sizeof(CONNECTION)-1 || lower != CONNECTION[parser->index]) {
-                parser->header_state = h_general;
-            } else if (parser->index == sizeof(CONNECTION)-2) {
-                parser->header_state = h_connection;
+            if (parser->index > sizeof(CONNECTION) - 1 || lower != CONNECTION[parser->index]) {
+                set_header_state(parser, h_general);
+            } else if (parser->index == sizeof(CONNECTION) - 2) {
+                set_header_state(parser, h_connection);
             }
+
+            errno = store_byte(next_byte, parser);
             break;
 
+        case h_general:
         default:
             token = TOKEN(next_byte);
 
@@ -366,17 +609,23 @@ int read_header_field_by_state(http_parser *parser, const http_parser_settings *
     return errno;
 }
 
-int read_header_field(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+int read_header_field(http_parser *parser, const http_parser_settings *settings, char next_byte, char lower) {
     int errno = 0;
-    char token;
 
     switch (next_byte) {
         case CR:
             break;
 
         case LF:
+            errno = on_cb(parser, settings->on_headers_complete);
+
+            if (parser->flags & F_CHUNKED) {
+                set_http_state(parser, s_body_chunk_start);
+            } else {
+                set_http_state(parser, s_req_body);
+            }
+
             parser->index = 0;
-            parser->state = s_req_body;
             break;
 
         case ':':
@@ -384,12 +633,40 @@ int read_header_field(http_parser *parser, const http_parser_settings *settings,
             reset_buffer(parser);
 
             parser->index = 0;
-            parser->state = s_req_header_value;
+            set_http_state(parser, s_header_value);
             break;
 
         default:
-            errno = read_header_field_by_state(parser, settings, next_byte);
+            errno = read_header_field_by_state(parser, settings, next_byte, lower);
     }
+
+    return errno;
+}
+
+int read_header_field_start(http_parser *parser, const http_parser_settings *settings, char next_byte, char lower) {
+    int errno = 0;
+
+    switch (lower) {
+        case 'c':
+            // potentially connection or content-length
+            errno = store_byte(next_byte, parser);
+            set_header_state(parser, h_matching_con);
+            break;
+
+        case 't':
+            // potentially transfer-encoding
+            errno = store_byte(next_byte, parser);
+            set_header_state(parser, h_matching_transfer_encoding);
+            break;
+
+        default:
+            set_header_state(parser, h_general);
+            set_http_state(parser, s_header_field);
+
+            errno = read_header_field(parser, settings, next_byte, lower);
+    }
+
+    set_http_state(parser, s_header_field);
 
     return errno;
 }
@@ -412,7 +689,7 @@ int read_request_http_version_minor(http_parser *parser, const http_parser_setti
             case LF:
                 errno = on_cb(parser, settings->on_req_http_version);
                 reset_buffer(parser);
-                parser->state = s_req_header_field;
+                set_http_state(parser, s_header_field_start);
             break;
 
             default:
@@ -436,7 +713,7 @@ int read_request_http_version_major(http_parser *parser, const http_parser_setti
     } else {
         switch (next_byte) {
             case '.':
-                parser->state = s_req_http_version_minor;
+                set_http_state(parser, s_req_http_version_minor);
                 break;
 
             case CR:
@@ -453,7 +730,7 @@ int read_request_http_version_head(http_parser *parser, const http_parser_settin
     int errno = 0;
 
     if (next_byte == '/') {
-        parser->state = s_req_http_version_major;
+        set_http_state(parser, s_req_http_version_major);
     } else if (!IS_ALPHA(next_byte)) {
         errno = ELERR_BAD_HTTP_VERSION_HEAD;
     }
@@ -473,7 +750,7 @@ int read_request_path(http_parser *parser, const http_parser_settings *settings,
                 reset_buffer(parser);
 
                 // Head right on over to the HTTP version next
-                parser->state = s_req_http_version_head;
+                set_http_state(parser, s_req_http_version_head);
                 break;
 
             default:
@@ -497,7 +774,7 @@ int read_request_method(http_parser *parser, const http_parser_settings *setting
                 reset_buffer(parser);
 
                 // Read the URI next
-                parser->state = s_req_path;
+                set_http_state(parser, s_req_path);
                 break;
 
             default:
@@ -510,13 +787,17 @@ int read_request_method(http_parser *parser, const http_parser_settings *setting
 
 int start_request(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     // Set state before calling the next function incase the function sets the state
-    parser->state = s_req_method;
+    set_http_state(parser, s_req_method);
     return read_request_method(parser, settings, next_byte);
 }
 
 int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
-    int errno = 0;
-    int d_index;
+    int errno = 0, d_index;
+
+    switch (parser->state) {
+        case s_body:
+        case s_chunk_data:
+    }
 
     for (d_index = 0; d_index < len; d_index++) {
         char next_byte = data[d_index];
@@ -546,12 +827,16 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
                 errno = read_request_http_version_minor(parser, settings, next_byte);
                 break;
 
-            case s_req_header_field:
-                errno = read_request_header_field(parser, settings, next_byte);
+            case s_header_field_start:
+                errno = read_header_field_start(parser, settings, next_byte, LOWER(next_byte));
                 break;
 
-            case s_req_header_value:
-                errno = read_request_header_value(parser, settings, next_byte);
+            case s_header_field:
+                errno = read_header_field(parser, settings, next_byte, LOWER(next_byte));
+                break;
+
+            case s_header_value:
+                errno = read_header_value(parser, settings, next_byte);
                 break;
 
             case s_req_body:
@@ -631,7 +916,9 @@ void http_parser_init(http_parser *parser, enum http_parser_type parser_type) {
     // Set up the struct elements
     parser->app_data = app_data;
     parser->type = parser_type;
-    parser->state = parser_type == HTTP_REQUEST ? s_req_start : s_resp_start;
+    set_http_state(
+        parser,
+        parser_type == HTTP_REQUEST ? s_req_start : s_resp_start);
     parser->buffer = init_pbuffer(HTTP_MAX_HEADER_SIZE);
     parser->http_errno = 0;
 }
@@ -640,9 +927,9 @@ void reset_http_parser(http_parser *parser) {
     reset_buffer(parser);
 
     if (parser->type == HTTP_REQUEST) {
-        parser->state = s_req_start;
+        set_http_state(parser, s_req_start);
     } else {
-        parser->state = s_resp_start;
+        set_http_state(parser, s_resp_start);
     }
 }
 

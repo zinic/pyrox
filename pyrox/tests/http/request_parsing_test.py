@@ -4,7 +4,8 @@ from pyrox.http import HttpEventParser, ParserDelegate
 
 
 REQUEST_LINE = b'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
-HEADER = b'Content-Length: 0\r\n'
+HEADER_1 = b'Connection: keep-alive\r\n'
+HEADER_2 = b'Content-Length: 1250\r\n'
 MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
 ARRAY_HEADER = b'Other: test, test, test\r\n'
 END = b'\r\n'
@@ -77,9 +78,11 @@ class ValidatingDelegate(ParserDelegate):
         self.test.assertEquals(1, minor)
 
     def on_header_field(self, field):
+        print('Header field: {}'.format(field))
         self.test.assertEquals('Content-Length', field)
 
     def on_header_value(self, value):
+        print('Header value: {}'.format(value))
         self.test.assertEquals('0', value)
 
 
@@ -131,8 +134,8 @@ class WhenParsingRequests(unittest.TestCase):
         parser = HttpEventParser(tracker)
 
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
-        parser.execute(HEADER, len(HEADER))
-        parser.execute(HEADER, len(HEADER))
+        parser.execute(HEADER_1, len(HEADER_1))
+        parser.execute(HEADER_2, len(HEADER_2))
 
         tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,
@@ -140,6 +143,7 @@ class WhenParsingRequests(unittest.TestCase):
             REQUEST_HTTP_VERSION_SLOT: 1,
             HEADER_FIELD_SLOT: 2,
             HEADER_VALUE_SLOT: 2}, self)
+        self.fail()
 
 
 if __name__ == '__main__':

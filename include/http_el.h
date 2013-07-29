@@ -33,7 +33,8 @@ enum flags {
     F_CHUNKED               = 1 << 0,
     F_CONNECTION_KEEP_ALIVE = 1 << 1,
     F_CONNECTION_CLOSE      = 1 << 2,
-    F_SKIPBODY              = 1 << 3
+    F_SKIPBODY              = 1 << 3,
+    F_TRAILING              = 1 << 4
 };
 
 enum HTTP_EL_ERROR {
@@ -45,6 +46,8 @@ enum HTTP_EL_ERROR {
     ELERR_BAD_HTTP_VERSION_MAJOR = 6,
     ELERR_BAD_HTTP_VERSION_MINOR = 7,
     ELERR_BAD_HEADER_TOKEN = 8,
+    ELERR_BAD_CONTENT_LENGTH = 9,
+    ELERR_BAD_CHUNK_SIZE = 10,
 
     ELERR_BAD_METHOD = 100,
 
@@ -69,11 +72,12 @@ struct http_parser_settings {
     http_data_cb      on_header_value;
     http_cb           on_headers_complete;
     http_cb           on_message_complete;
+    http_data_cb      on_body;
 };
 
 struct http_parser {
     // Parser fields
-    unsigned char flags : 4;
+    unsigned char flags : 5;
     unsigned char http_errno;
     unsigned char state;
     unsigned char header_state;
@@ -82,6 +86,7 @@ struct http_parser {
 
     // Reserved fields
     unsigned long content_length;
+    unsigned int bytes_read;
 
     // HTTP version info
     unsigned short http_major;
