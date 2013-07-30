@@ -46,6 +46,31 @@ cdef int on_header_value(http_parser *parser, char *data, size_t length):
         pass
     return 0
 
+cdef int on_headers_complete(http_parser *parser):
+    cdef object app_data = <object> parser.app_data
+    try:
+        app_data.delegate.on_headers_complete()
+    except Exception as ex:
+        pass
+    return 0
+
+cdef int on_body(http_parser *parser, char *data, size_t length):
+    cdef object app_data = <object> parser.app_data
+    cdef object body_value = PyBytes_FromStringAndSize(data, length)
+    try:
+        app_data.delegate.on_body(body_value)
+    except Exception as ex:
+        pass
+    return 0
+
+cdef int on_message_complete(http_parser *parser):
+    cdef object app_data = <object> parser.app_data
+    try:
+        app_data.delegate.on_message_complete()
+    except Exception as ex:
+        pass
+    return 0
+
 
 class ParserDelegate(object):
 
@@ -67,10 +92,13 @@ class ParserDelegate(object):
     def on_header_value(self, value):
         pass
 
+    def on_headers_complete(self):
+        pass
+
     def on_body(self, bytes):
         pass
 
-    def on_body_complete(self):
+    def on_message_complete(self):
         pass
 
 
@@ -107,15 +135,15 @@ cdef class HttpEventParser(object):
         http_parser_init(self._parser, parser_type)
 
         # set callbacks
+        self._settings.on_message_begin = <http_cb>on_message_begin
         self._settings.on_req_method = <http_data_cb>on_req_method
         self._settings.on_req_path = <http_data_cb>on_req_path
         self._settings.on_req_http_version = <http_cb>on_req_http_version
-        #self._settings.on_body = <http_data_cb>on_body_cb
+        self._settings.on_body = <http_data_cb>on_body
         self._settings.on_header_field = <http_data_cb>on_header_field
         self._settings.on_header_value = <http_data_cb>on_header_value
-        #self._settings.on_headers_complete = <http_cb>on_headers_complete_cb
-        #self._settings.on_message_begin = <http_cb>on_message_begin_cb
-        #self._settings.on_message_complete = <http_cb>on_message_complete_cb
+        self._settings.on_headers_complete = <http_cb>on_headers_complete
+        self._settings.on_message_complete = <http_cb>on_message_complete
 
     def __dealloc__(self):
         free_http_parser(self._parser)

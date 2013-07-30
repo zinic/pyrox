@@ -21,6 +21,7 @@ cdef extern from "http_el.h":
         http_data_cb      on_header_field
         http_data_cb      on_header_value
         http_cb           on_headers_complete
+        http_data_cb      on_body
         http_cb           on_message_complete
 
     void http_parser_init(http_parser *parser, http_parser_type ptype)

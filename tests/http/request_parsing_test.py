@@ -5,7 +5,8 @@ from pyrox.http import HttpEventParser, ParserDelegate
 
 REQUEST_LINE = b'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
 HEADER_1 = b'Connection: keep-alive\r\n'
-HEADER_2 = b'Content-Length: 1250\r\n'
+HEADER_2 = b'Content-Length: 12\r\n\r\n'
+BODY = b'This is a test'
 MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
 ARRAY_HEADER = b'Other: test, test, test\r\n'
 END = b'\r\n'
@@ -136,6 +137,7 @@ class WhenParsingRequests(unittest.TestCase):
         parser.execute(REQUEST_LINE, len(REQUEST_LINE))
         parser.execute(HEADER_1, len(HEADER_1))
         parser.execute(HEADER_2, len(HEADER_2))
+        parser.execute(BODY, len(BODY))
 
         tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,

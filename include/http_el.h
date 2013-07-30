@@ -71,14 +71,13 @@ struct http_parser_settings {
     http_data_cb      on_header_field;
     http_data_cb      on_header_value;
     http_cb           on_headers_complete;
-    http_cb           on_message_complete;
     http_data_cb      on_body;
+    http_cb           on_message_complete;
 };
 
 struct http_parser {
     // Parser fields
     unsigned char flags : 5;
-    unsigned char http_errno;
     unsigned char state;
     unsigned char header_state;
     unsigned char type;
@@ -86,7 +85,7 @@ struct http_parser {
 
     // Reserved fields
     unsigned long content_length;
-    unsigned int bytes_read;
+    size_t bytes_read;
 
     // HTTP version info
     unsigned short http_major;

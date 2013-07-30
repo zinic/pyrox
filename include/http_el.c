@@ -344,22 +344,43 @@ void set_header_state(http_parser *parser, header_state state) {
 }
 
 
-int read_request_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
-    if (parser->content_length) {
+int read_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
+    int errno = 0;
+    size_t read = 0;
+
+    if (parser->content_length > length) {
+        settings->on_body(parser, data, length);
+        read = length;
+    } else {
+        settings->on_body(parser, data, parser->content_length);
+        read = length - parser->content_length;
     }
 
-    return on_data_cb(parser, settings->on_body);
+    parser->content_length -= read;
+    parser->bytes_read += read;
+    return errno;
 }
 
 int read_chunk_data(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
     int errno = 0;
+    size_t read = 0;
 
     if (parser->content_length > length) {
         settings->on_body(parser, data, length);
-        parser->content_length -= length;
+        read = length;
     } else {
-
+        settings->on_body(parser, data, parser->content_length);
+        read = length - parser->content_length;
     }
+
+    parser->content_length -= read;
+    parser->bytes_read += read;
+
+    if (parser->content_length == 0) {
+        set_http_state(parser, s_body_complete);
+    }
+
+    return errno;
 }
 
 int read_chunk_parameters(http_parser *parser, const http_parser_settings *settings, char next_byte) {
@@ -371,6 +392,7 @@ int read_chunk_parameters(http_parser *parser, const http_parser_settings *setti
 
         case LF:
             if (parser->content_length == 0) {
+                // TODO
                 parser->flags |= F_TRAILING;
                 set_http_state(parser, s_header_field_start);
             } else {
@@ -405,7 +427,7 @@ int read_chunk_size(http_parser *parser, const http_parser_settings *settings, c
             break;
 
         default:
-            unhex_val = unhex[(unsigned char)ch];
+            unhex_val = unhex[(unsigned char)next_byte];
 
             if (unhex_val == -1) {
                 errno = ELERR_BAD_CHUNK_SIZE;
@@ -428,7 +450,7 @@ int read_chunk_size(http_parser *parser, const http_parser_settings *settings, c
 
 int read_chunk_start(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
-    unsigned char unhex_val = unhex[(unsigned char)ch];
+    unsigned char unhex_val = unhex[(unsigned char)next_byte];
 
     if (unhex_val == -1) {
         errno = ELERR_BAD_CHUNK_SIZE;
@@ -614,15 +636,17 @@ int read_header_field(http_parser *parser, const http_parser_settings *settings,
 
     switch (next_byte) {
         case CR:
+            printf("here_cr");
             break;
 
         case LF:
+            printf("here_lf");
             errno = on_cb(parser, settings->on_headers_complete);
 
             if (parser->flags & F_CHUNKED) {
-                set_http_state(parser, s_body_chunk_start);
+                set_http_state(parser, s_chunk_start);
             } else {
-                set_http_state(parser, s_req_body);
+                set_http_state(parser, s_body);
             }
 
             parser->index = 0;
@@ -660,9 +684,8 @@ int read_header_field_start(http_parser *parser, const http_parser_settings *set
             break;
 
         default:
+            printf("header_field_start default");
             set_header_state(parser, h_general);
-            set_http_state(parser, s_header_field);
-
             errno = read_header_field(parser, settings, next_byte, lower);
     }
 
@@ -791,12 +814,18 @@ int start_request(http_parser *parser, const http_parser_settings *settings, cha
     return read_request_method(parser, settings, next_byte);
 }
 
-int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
+int handle_request_state(http_parser *parser, const http_parser_settings *settings, const char *data, size_t offset, size_t len) {
     int errno = 0, d_index;
 
     switch (parser->state) {
         case s_body:
+            break;
+
         case s_chunk_data:
+            break;
+
+        default:
+            break;
     }
 
     for (d_index = 0; d_index < len; d_index++) {
@@ -839,18 +868,45 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
                 errno = read_header_value(parser, settings, next_byte);
                 break;
 
-            case s_req_body:
+            case s_chunk_start:
+                errno = read_chunk_start(parser, settings, next_byte);
+                break;
+
+            case s_chunk_size:
+                errno = read_chunk_size(parser, settings, next_byte);
+                break;
+
+            case s_chunk_parameters:
+                errno = read_chunk_parameters(parser, settings, next_byte);
+                break;
+
+            case s_body_complete:
+                errno = read_chunk_start(parser, settings, next_byte);
                 break;
 
             default:
                 errno = ELERR_BAD_STATE;
         }
+    }
 
-        // If errno evals to true then an error was set
-        if (errno) {
-            printf("Bad token found %c\n", next_byte);
+    return errno;
+}
+
+int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
+    int errno = 0, d_index;
+
+    switch (parser->state) {
+        case s_body:
+            errno = read_body(parser, settings, data, len);
             break;
-        }
+
+        case s_chunk_data:
+            errno = read_chunk_data(parser, settings, data, len);
+            break;
+    }
+
+    if (!errno && parser->bytes_read < len) {
+        errno = handle_request_state(parser, settings, data, parser->bytes_read, len);
     }
 
     return errno;
@@ -920,7 +976,7 @@ void http_parser_init(http_parser *parser, enum http_parser_type parser_type) {
         parser,
         parser_type == HTTP_REQUEST ? s_req_start : s_resp_start);
     parser->buffer = init_pbuffer(HTTP_MAX_HEADER_SIZE);
-    parser->http_errno = 0;
+    parser->bytes_read = 0;
 }
 
 void reset_http_parser(http_parser *parser) {
