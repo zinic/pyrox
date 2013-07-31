@@ -148,23 +148,27 @@ enum http_el_state {
     s_req_start,
     s_req_method,
     s_req_path,
-    s_req_http_version_head,
-    s_req_http_version_major,
-    s_req_http_version_minor,
 
     // Common states
+    s_http_version_head,
+    s_http_version_major,
+    s_http_version_minor,
+
     s_header_field_start,
     s_header_field,
     s_header_value,
+
     s_body,
-    s_chunk_start,
     s_chunk_size,
     s_chunk_parameters,
     s_chunk_data,
+    s_chunk_complete,
     s_body_complete,
 
     // Reponse states
-    s_resp_start
+    s_resp_start,
+    s_resp_status,
+    s_resp_rphrase
 };
 
 enum header_state {
@@ -242,10 +246,14 @@ int copy_into_pbuffer(const char *source, pbuffer *dest, size_t length) {
 }
 
 void reset_buffer(http_parser *parser) {
+    parser->bytes_read = 0;
+    parser->index = 0;
+
     reset_pbuffer(parser->buffer);
 }
 
 int store_byte(char byte, http_parser *parser) {
+    parser->bytes_read += 1;
     return store_byte_in_pbuffer(byte, parser->buffer);
 }
 
@@ -265,11 +273,11 @@ char * http_el_state_name(http_el_state state) {
             return "request method";
         case s_req_path:
             return "request path";
-        case s_req_http_version_head:
+        case s_http_version_head:
             return "http version head";
-        case s_req_http_version_major:
+        case s_http_version_major:
             return "http version major";
-        case s_req_http_version_minor:
+        case s_http_version_minor:
             return "http version minor";
         case s_header_field_start:
             return "header field start";
@@ -279,8 +287,6 @@ char * http_el_state_name(http_el_state state) {
             return "header value";
         case s_body:
             return "request body";
-        case s_chunk_start:
-            return "chunk start";
         case s_chunk_size:
             return "chunk size";
         case s_chunk_parameters:
@@ -289,8 +295,14 @@ char * http_el_state_name(http_el_state state) {
             return "chunk data";
         case s_body_complete:
             return "body complete";
+        case s_chunk_complete:
+            return "chunk complete";
         case s_resp_start:
             return "response start";
+        case s_resp_status:
+            return "response status code";
+        case s_resp_rphrase:
+            return "response reason phrase";
 
         default:
             return "ERROR - NOT A STATE";
@@ -344,40 +356,67 @@ void set_header_state(http_parser *parser, header_state state) {
 }
 
 
-int read_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
-    int errno = 0;
+void reset_http_parser(http_parser *parser) {
+    reset_buffer(parser);
+    set_header_state(parser, h_general);
+
+    parser->bytes_read = 0;
+    parser->status_code = 0;
+    parser->flags = 0;
+    parser->content_length = 0;
+    parser->http_major = 0;
+    parser->http_minor = 0;
+
+    set_http_state(
+        parser,
+        parser->type == HTTP_REQUEST ? s_req_start : s_resp_start);
+}
+
+
+int read_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t offset, size_t length) {
+    int errno = 0, real_length = length - offset;
     size_t read = 0;
 
-    if (parser->content_length > length) {
-        settings->on_body(parser, data, length);
-        read = length;
+    if (parser->content_length >= real_length) {
+        settings->on_body(parser, data, offset, real_length);
+        read = real_length;
     } else {
-        settings->on_body(parser, data, parser->content_length);
-        read = length - parser->content_length;
+        settings->on_body(parser, data, offset, parser->content_length);
+        read = parser->content_length;
     }
 
+    printf("Offset is %i - Real length is %i - Data length is %i - Content length is %i\n", offset, real_length, length, parser->content_length);
     parser->content_length -= read;
     parser->bytes_read += read;
+    printf("Read %i bytes with content length now equal to %i\n", read, parser->content_length);
+
+    if (parser->content_length == 0) {
+        switch(parser->state) {
+            case s_chunk_data:
+                set_http_state(parser, s_chunk_complete);
+                break;
+
+            default:
+                set_http_state(parser, s_body_complete);
+        }
+    }
+
     return errno;
 }
 
-int read_chunk_data(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
+int read_chunk_complete(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     int errno = 0;
-    size_t read = 0;
 
-    if (parser->content_length > length) {
-        settings->on_body(parser, data, length);
-        read = length;
-    } else {
-        settings->on_body(parser, data, parser->content_length);
-        read = length - parser->content_length;
-    }
+    switch (next_byte) {
+        case CR:
+            break;
 
-    parser->content_length -= read;
-    parser->bytes_read += read;
+        case LF:
+            set_http_state(parser, s_chunk_size);
+            break;
 
-    if (parser->content_length == 0) {
-        set_http_state(parser, s_body_complete);
+        default:
+            errno = ELERR_BAD_DATA_AFTER_CHUNK;
     }
 
     return errno;
@@ -392,9 +431,9 @@ int read_chunk_parameters(http_parser *parser, const http_parser_settings *setti
 
         case LF:
             if (parser->content_length == 0) {
-                // TODO
-                parser->flags |= F_TRAILING;
-                set_http_state(parser, s_header_field_start);
+                // TODO:Feature - Implement trailing headers
+                //parser->flags |= F_TRAILING;
+                set_http_state(parser, s_body_complete);
             } else {
                 set_http_state(parser, s_chunk_data);
             }
@@ -408,14 +447,17 @@ int read_chunk_size(http_parser *parser, const http_parser_settings *settings, c
     unsigned char unhex_val;
     unsigned long t;
 
+    printf("On size -> %c\n", next_byte);
+
     switch (next_byte) {
         case CR:
             break;
 
         case LF:
             if (parser->content_length == 0) {
-                parser->flags |= F_TRAILING;
-                set_http_state(parser, s_header_field_start);
+                // TODO:Feature - Implement trailing headers
+                //parser->flags |= F_TRAILING;
+                set_http_state(parser, s_body_complete);
             } else {
                 set_http_state(parser, s_chunk_data);
             }
@@ -428,7 +470,7 @@ int read_chunk_size(http_parser *parser, const http_parser_settings *settings, c
 
         default:
             unhex_val = unhex[(unsigned char)next_byte];
-
+            printf("Unhex(%c) == %i\n", next_byte, unhex_val);
             if (unhex_val == -1) {
                 errno = ELERR_BAD_CHUNK_SIZE;
             } else {
@@ -455,8 +497,8 @@ int read_chunk_start(http_parser *parser, const http_parser_settings *settings, 
     if (unhex_val == -1) {
         errno = ELERR_BAD_CHUNK_SIZE;
     } else {
-        parser->content_length = unhex_val;
-        parser->state = s_chunk_size;
+        set_http_state(parser, s_chunk_size);
+        errno = read_chunk_size(parser, settings, next_byte);
     }
 
     return errno;
@@ -512,24 +554,20 @@ int process_header_by_state(http_parser *parser, const http_parser_settings *set
 
         case h_content_length:
             // TODO(Complexity): refactor into function
-            if (next_byte != ' ') {
-                if (!IS_NUM(next_byte)) {
+            if (!IS_NUM(next_byte)) {
+                errno = ELERR_BAD_CONTENT_LENGTH;
+            } else {
+                t = parser->content_length;
+                t *= 10;
+                t += next_byte - '0';
+
+                /* Overflow? */
+                if (t < parser->content_length || t == ULLONG_MAX) {
                     errno = ELERR_BAD_CONTENT_LENGTH;
                 } else {
-                    t = parser->content_length;
-                    t *= 10;
-                    t += next_byte - '0';
-
-                    /* Overflow? */
-                    if (t < parser->content_length || t == ULLONG_MAX) {
-                        errno = ELERR_BAD_CONTENT_LENGTH;
-                    } else {
-                        parser->content_length = t;
-                        errno = store_byte(next_byte, parser);
-                    }
+                    parser->content_length = t;
+                    errno = store_byte(next_byte, parser);
                 }
-            } else {
-                errno = store_byte(next_byte, parser);
             }
             break;
 
@@ -554,6 +592,14 @@ int read_header_value(http_parser *parser, const http_parser_settings *settings,
             set_http_state(parser, s_header_field_start);
             set_header_state(parser, h_general);
             break;
+
+        case '\t':
+        case ' ':
+            // Skip leading whitespace
+            if (parser->bytes_read == 0) {
+                printf("Skipping leading whitespace\n");
+                break;
+            }
 
         default:
             errno = process_header_by_state(parser, settings, next_byte);
@@ -580,15 +626,21 @@ int read_header_field_by_state(http_parser *parser, const http_parser_settings *
 
         case h_matching_con:
             parser->index += 1;
+            printf("Index is %i - Matching con -> %c\n", parser->index, lower);
             if (parser->index < sizeof(CON) - 1 && lower != CON[parser->index]) {
                 set_header_state(parser, h_general);
             } else if (parser->index == sizeof(CON) - 1) {
-                if (lower == CONTENT_LENGTH[parser->index]) {
-                    set_header_state(parser, h_matching_content_length);
-                } else if (lower == CONNECTION[parser->index]) {
-                    set_header_state(parser, h_matching_connection);
-                } else {
-                    set_header_state(parser, h_general);
+                switch (lower) {
+                    case 't':
+                        set_header_state(parser, h_matching_content_length);
+                        break;
+
+                    case 'n':
+                        set_header_state(parser, h_matching_connection);
+                        break;
+
+                    default:
+                        set_header_state(parser, h_general);
                 }
             }
 
@@ -636,27 +688,21 @@ int read_header_field(http_parser *parser, const http_parser_settings *settings,
 
     switch (next_byte) {
         case CR:
-            printf("here_cr");
             break;
 
         case LF:
-            printf("here_lf");
             errno = on_cb(parser, settings->on_headers_complete);
 
             if (parser->flags & F_CHUNKED) {
-                set_http_state(parser, s_chunk_start);
+                set_http_state(parser, s_chunk_size);
             } else {
                 set_http_state(parser, s_body);
             }
-
-            parser->index = 0;
             break;
 
         case ':':
             errno = on_data_cb(parser, settings->on_header_field);
             reset_buffer(parser);
-
-            parser->index = 0;
             set_http_state(parser, s_header_value);
             break;
 
@@ -684,7 +730,6 @@ int read_header_field_start(http_parser *parser, const http_parser_settings *set
             break;
 
         default:
-            printf("header_field_start default");
             set_header_state(parser, h_general);
             errno = read_header_field(parser, settings, next_byte, lower);
     }
@@ -736,7 +781,7 @@ int read_request_http_version_major(http_parser *parser, const http_parser_setti
     } else {
         switch (next_byte) {
             case '.':
-                set_http_state(parser, s_req_http_version_minor);
+                set_http_state(parser, s_http_version_minor);
                 break;
 
             case CR:
@@ -753,7 +798,7 @@ int read_request_http_version_head(http_parser *parser, const http_parser_settin
     int errno = 0;
 
     if (next_byte == '/') {
-        set_http_state(parser, s_req_http_version_major);
+        set_http_state(parser, s_http_version_major);
     } else if (!IS_ALPHA(next_byte)) {
         errno = ELERR_BAD_HTTP_VERSION_HEAD;
     }
@@ -773,7 +818,7 @@ int read_request_path(http_parser *parser, const http_parser_settings *settings,
                 reset_buffer(parser);
 
                 // Head right on over to the HTTP version next
-                set_http_state(parser, s_req_http_version_head);
+                set_http_state(parser, s_http_version_head);
                 break;
 
             default:
@@ -814,21 +859,10 @@ int start_request(http_parser *parser, const http_parser_settings *settings, cha
     return read_request_method(parser, settings, next_byte);
 }
 
-int handle_request_state(http_parser *parser, const http_parser_settings *settings, const char *data, size_t offset, size_t len) {
+int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
     int errno = 0, d_index;
 
-    switch (parser->state) {
-        case s_body:
-            break;
-
-        case s_chunk_data:
-            break;
-
-        default:
-            break;
-    }
-
-    for (d_index = 0; d_index < len; d_index++) {
+    for (d_index = 0; d_index < length; d_index++) {
         char next_byte = data[d_index];
 
         switch (parser->state) {
@@ -844,15 +878,15 @@ int handle_request_state(http_parser *parser, const http_parser_settings *settin
                 errno = read_request_path(parser, settings, next_byte);
                 break;
 
-            case s_req_http_version_head:
+            case s_http_version_head:
                 errno = read_request_http_version_head(parser, settings, next_byte);
                 break;
 
-            case s_req_http_version_major:
+            case s_http_version_major:
                 errno = read_request_http_version_major(parser, settings, next_byte);
                 break;
 
-            case s_req_http_version_minor:
+            case s_http_version_minor:
                 errno = read_request_http_version_minor(parser, settings, next_byte);
                 break;
 
@@ -868,8 +902,95 @@ int handle_request_state(http_parser *parser, const http_parser_settings *settin
                 errno = read_header_value(parser, settings, next_byte);
                 break;
 
-            case s_chunk_start:
-                errno = read_chunk_start(parser, settings, next_byte);
+            case s_chunk_size:
+                errno = read_chunk_size(parser, settings, next_byte);
+                break;
+
+            case s_chunk_parameters:
+                errno = read_chunk_parameters(parser, settings, next_byte);
+                break;
+
+            case s_body:
+            case s_chunk_data:
+                read_body(parser, settings, data, d_index, length);
+                d_index += parser->bytes_read;
+                reset_buffer(parser);
+                break;
+
+            case s_chunk_complete:
+                errno = read_chunk_complete(parser, settings, next_byte);
+                break;
+
+            default:
+                errno = ELERR_BAD_STATE;
+        }
+
+        if (parser->state == s_body_complete) {
+            on_cb(parser, settings->on_message_complete);
+            reset_http_parser(parser);
+        }
+    }
+
+    return errno;
+}
+
+
+// Response processing
+int read_response_rprhase(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    return 0;
+}
+
+int read_response_status(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    return 0;
+}
+
+int start_response(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    // Set state before calling the next function incase the function sets the state
+    set_http_state(parser, s_resp_status);
+    return read_response_status(parser, settings, next_byte);
+}
+
+int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
+    int errno = 0, d_index;
+
+    for (d_index = 0; d_index < length; d_index++) {
+        char next_byte = data[d_index];
+
+        switch (parser->state) {
+            case s_resp_start:
+                errno = start_response(parser, settings, next_byte);
+                break;
+
+            case s_resp_status:
+                errno = read_response_status(parser, settings, next_byte);
+                break;
+
+            case s_resp_rphrase:
+                errno = read_request_path(parser, settings, next_byte);
+                break;
+
+            case s_http_version_head:
+                errno = read_request_http_version_head(parser, settings, next_byte);
+                break;
+
+            case s_http_version_major:
+                errno = read_request_http_version_major(parser, settings, next_byte);
+                break;
+
+            case s_http_version_minor:
+                errno = read_request_http_version_minor(parser, settings, next_byte);
+                break;
+
+            case s_header_field_start:
+                errno = read_header_field_start(parser, settings, next_byte, LOWER(next_byte));
+                break;
+
+            case s_header_field:
+                errno = read_header_field(parser, settings, next_byte, LOWER(next_byte));
+                break;
+
+            case s_header_value:
+                errno = read_header_value(parser, settings, next_byte);
                 break;
 
             case s_chunk_size:
@@ -880,65 +1001,24 @@ int handle_request_state(http_parser *parser, const http_parser_settings *settin
                 errno = read_chunk_parameters(parser, settings, next_byte);
                 break;
 
-            case s_body_complete:
-                errno = read_chunk_start(parser, settings, next_byte);
+            case s_body:
+            case s_chunk_data:
+                read_body(parser, settings, data, d_index, length);
+                d_index += parser->bytes_read;
+                reset_buffer(parser);
                 break;
 
-            default:
-                errno = ELERR_BAD_STATE;
-        }
-    }
-
-    return errno;
-}
-
-int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
-    int errno = 0, d_index;
-
-    switch (parser->state) {
-        case s_body:
-            errno = read_body(parser, settings, data, len);
-            break;
-
-        case s_chunk_data:
-            errno = read_chunk_data(parser, settings, data, len);
-            break;
-    }
-
-    if (!errno && parser->bytes_read < len) {
-        errno = handle_request_state(parser, settings, data, parser->bytes_read, len);
-    }
-
-    return errno;
-}
-
-
-// Response processing
-
-
-int start_response(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-    return 0;
-}
-
-int response_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
-    int errno = 0;
-    int d_index;
-
-    for (d_index = 0; d_index < len; d_index++) {
-        char next_byte = data[d_index];
-
-        switch (parser->state) {
-            case s_resp_start:
-                errno = start_response(parser, settings, next_byte);
+            case s_chunk_complete:
+                errno = read_chunk_complete(parser, settings, next_byte);
                 break;
 
             default:
                 errno = ELERR_BAD_STATE;
         }
 
-        // If errno evals to true then an error was set
-        if (errno) {
-            break;
+        if (parser->state == s_body_complete) {
+            on_cb(parser, settings->on_message_complete);
+            reset_http_parser(parser);
         }
     }
 
@@ -972,21 +1052,8 @@ void http_parser_init(http_parser *parser, enum http_parser_type parser_type) {
     // Set up the struct elements
     parser->app_data = app_data;
     parser->type = parser_type;
-    set_http_state(
-        parser,
-        parser_type == HTTP_REQUEST ? s_req_start : s_resp_start);
     parser->buffer = init_pbuffer(HTTP_MAX_HEADER_SIZE);
-    parser->bytes_read = 0;
-}
-
-void reset_http_parser(http_parser *parser) {
-    reset_buffer(parser);
-
-    if (parser->type == HTTP_REQUEST) {
-        set_http_state(parser, s_req_start);
-    } else {
-        set_http_state(parser, s_resp_start);
-    }
+    reset_http_parser(parser);
 }
 
 void free_http_parser(http_parser *parser) {
@@ -995,7 +1062,7 @@ void free_http_parser(http_parser *parser) {
 }
 
 int http_message_needs_eof(const http_parser *parser) {
-    // If this is a request, then hell yes
+    // If this is a request, no
     if (parser->type == HTTP_REQUEST) {
         return 0;
     }

@@ -2,21 +2,38 @@ import unittest
 
 from pyrox.http import HttpEventParser, ParserDelegate
 
+NORMAL_REQUEST = """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
+Connection: keep-alive\r
+Content-Length: 12\r\n
+\r
+This is test"""
 
-REQUEST_LINE = b'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
-HEADER_1 = b'Connection: keep-alive\r\n'
-HEADER_2 = b'Content-Length: 12\r\n\r\n'
-BODY = b'This is a test'
-MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
-ARRAY_HEADER = b'Other: test, test, test\r\n'
-END = b'\r\n'
-
+CHUNKED_REQUEST = """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
+Connection: keep-alive\r
+Transfer-Encoding: chunked\r\n
+\r
+1e\r\nall your base are belong to us\r
+0\r
+"""
 
 REQUEST_METHOD_SLOT = 'REQUEST_METHOD'
 REQUEST_URI_SLOT = 'REQUEST_URI'
 REQUEST_HTTP_VERSION_SLOT = 'REQUEST_HTTP_VERSION'
 HEADER_FIELD_SLOT = 'HEADER_FIELD'
 HEADER_VALUE_SLOT = 'HEADER_VALUE'
+BODY_SLOT = 'BODY'
+BODY_COMPLETE_SLOT = 'BODY_COMPLETE'
+
+
+def chunk_message(data, parser, chunk_size=10, limit=-1):
+    if limit <= 0:
+        limit = len(data)
+    index = 0
+    while index < limit:
+        next_index = index + chunk_size
+        end_index = next_index if next_index < limit else limit
+        parser.execute(data[index:end_index], end_index - index)
+        index = end_index
 
 
 class TrackingDelegate(ParserDelegate):
@@ -28,6 +45,8 @@ class TrackingDelegate(ParserDelegate):
             REQUEST_HTTP_VERSION_SLOT: 0,
             HEADER_FIELD_SLOT: 0,
             HEADER_VALUE_SLOT: 0,
+            BODY_SLOT: 0,
+            BODY_COMPLETE_SLOT: 0
         }
 
         self.delegate = delegate
@@ -48,7 +67,7 @@ class TrackingDelegate(ParserDelegate):
 
     def on_req_path(self, url):
         self.register_hit(REQUEST_URI_SLOT)
-        self.delegate.on_url(url)
+        self.delegate.on_req_path(url)
 
     def on_req_http_version(self, major, minor):
         self.register_hit(REQUEST_HTTP_VERSION_SLOT)
@@ -61,6 +80,13 @@ class TrackingDelegate(ParserDelegate):
     def on_header_value(self, value):
         self.register_hit(HEADER_VALUE_SLOT)
         self.delegate.on_header_value(value)
+
+    def on_body(self, data):
+        self.register_hit(BODY_SLOT)
+        self.delegate.on_body(data)
+
+    def on_message_complete(self):
+        self.register_hit(BODY_COMPLETE_SLOT)
 
 
 class ValidatingDelegate(ParserDelegate):
@@ -79,73 +105,47 @@ class ValidatingDelegate(ParserDelegate):
         self.test.assertEquals(1, minor)
 
     def on_header_field(self, field):
-        print('Header field: {}'.format(field))
-        self.test.assertEquals('Content-Length', field)
+        if field not in ['Transfer-Encoding', 'Content-Length', 'Connection']:
+            self.test.fail('Unexpected header field {}'.format(field))
 
     def on_header_value(self, value):
-        print('Header value: {}'.format(value))
-        self.test.assertEquals('0', value)
+        if value not in ['keep-alive', 'chunked', '12']:
+            self.test.fail('Unexpected header value {}'.format(value))
 
-
-class MultiValueHeaderDelegate(ParserDelegate):
-
-    def __init__(self, test):
-        self.test = test
-        self.second_value = False
-
-    def on_header(self, name, value):
-        self.test.assertEquals('Test', name)
-
-        if not self.second_value:
-            self.test.assertEquals('test', value)
-            self.second_value = True
-        else:
-            self.test.assertEquals('test2', value)
-
-
-class ArrayValueHeaderDelegate(ParserDelegate):
-
-    def __init__(self, test):
-        self.test = test
-        self.second_value = False
-
-    def on_header(self, name, value):
-        self.test.assertEquals('Other', name)
-        self.test.assertEquals('test, test, test', value)
-
+    def on_body(self, data):
+        print('got {}'.format(data))
 
 class WhenParsingRequests(unittest.TestCase):
 
-    def test_init(self):
-        parser = HttpEventParser(None)
-
-    def test_simple_request_line(self):
+    def test_reading_request_with_content_length(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
         parser = HttpEventParser(tracker)
 
-        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
-
-        tracker.validate_hits({
-            REQUEST_METHOD_SLOT: 1,
-            REQUEST_URI_SLOT: 1,
-            REQUEST_HTTP_VERSION_SLOT: 1}, self)
-
-    def test_header(self):
-        tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker)
-
-        parser.execute(REQUEST_LINE, len(REQUEST_LINE))
-        parser.execute(HEADER_1, len(HEADER_1))
-        parser.execute(HEADER_2, len(HEADER_2))
-        parser.execute(BODY, len(BODY))
+        chunk_message(NORMAL_REQUEST, parser)
 
         tracker.validate_hits({
             REQUEST_METHOD_SLOT: 1,
             REQUEST_URI_SLOT: 1,
             REQUEST_HTTP_VERSION_SLOT: 1,
             HEADER_FIELD_SLOT: 2,
-            HEADER_VALUE_SLOT: 2}, self)
-        self.fail()
+            HEADER_VALUE_SLOT: 2,
+            BODY_SLOT: 2,
+            BODY_COMPLETE_SLOT: 1}, self)
+
+    def test_reading_chunked_request(self):
+        tracker = TrackingDelegate(ValidatingDelegate(self))
+        parser = HttpEventParser(tracker)
+
+        chunk_message(CHUNKED_REQUEST, parser)
+
+        tracker.validate_hits({
+            REQUEST_METHOD_SLOT: 1,
+            REQUEST_URI_SLOT: 1,
+            REQUEST_HTTP_VERSION_SLOT: 1,
+            HEADER_FIELD_SLOT: 2,
+            HEADER_VALUE_SLOT: 2,
+            BODY_SLOT: 4,
+            BODY_COMPLETE_SLOT: 1}, self)
 
 
 if __name__ == '__main__':

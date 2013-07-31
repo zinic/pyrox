@@ -9,11 +9,11 @@ cdef extern from "http_el.h":
         short http_major
         short http_minor
 
+    ctypedef int (*http_body_cb) (http_parser*, char *at, size_t offset, size_t length)
     ctypedef int (*http_data_cb) (http_parser*, char *at, size_t length)
     ctypedef int (*http_cb) (http_parser*)
 
     struct http_parser_settings:
-        http_cb           on_message_begin
         http_data_cb      on_req_method
         http_data_cb      on_req_path
         http_cb           on_req_http_version
@@ -21,7 +21,7 @@ cdef extern from "http_el.h":
         http_data_cb      on_header_field
         http_data_cb      on_header_value
         http_cb           on_headers_complete
-        http_data_cb      on_body
+        http_body_cb      on_body
         http_cb           on_message_complete
 
     void http_parser_init(http_parser *parser, http_parser_type ptype)

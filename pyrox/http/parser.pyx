@@ -2,73 +2,73 @@ from libc.stdlib cimport malloc, free
 
 from cpython cimport bool, PyBytes_FromStringAndSize, PyBytes_FromString
 
-cdef int on_req_method(http_parser *parser, char *data, size_t length):
+cdef int on_req_method(http_parser *parser, char *data, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
     cdef object method_str = PyBytes_FromStringAndSize(data, length)
     try:
         app_data.delegate.on_req_method(method_str)
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_req_path(http_parser *parser, char *data, size_t length):
+cdef int on_req_path(http_parser *parser, char *data, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
     cdef object req_path_str = PyBytes_FromStringAndSize(data, length)
     try:
         app_data.delegate.on_req_path(req_path_str)
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_req_http_version(http_parser *parser):
+cdef int on_req_http_version(http_parser *parser) except -1:
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_req_http_version(parser.http_major, parser.http_minor)
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_header_field(http_parser *parser, char *data, size_t length):
+cdef int on_header_field(http_parser *parser, char *data, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
     cdef object header_field = PyBytes_FromStringAndSize(data, length)
     try:
         app_data.delegate.on_header_field(header_field)
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_header_value(http_parser *parser, char *data, size_t length):
+cdef int on_header_value(http_parser *parser, char *data, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
     cdef object header_value = PyBytes_FromStringAndSize(data, length)
     try:
         app_data.delegate.on_header_value(header_value)
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_headers_complete(http_parser *parser):
+cdef int on_headers_complete(http_parser *parser) except -1:
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_headers_complete()
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_body(http_parser *parser, char *data, size_t length):
+cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
-    cdef object body_value = PyBytes_FromStringAndSize(data, length)
+    cdef object body_value = PyBytes_FromStringAndSize(data + offset, length)
     try:
         app_data.delegate.on_body(body_value)
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
-cdef int on_message_complete(http_parser *parser):
+cdef int on_message_complete(http_parser *parser) except -1:
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_message_complete()
     except Exception as ex:
-        pass
+        raise ex
     return 0
 
 
@@ -135,14 +135,13 @@ cdef class HttpEventParser(object):
         http_parser_init(self._parser, parser_type)
 
         # set callbacks
-        self._settings.on_message_begin = <http_cb>on_message_begin
         self._settings.on_req_method = <http_data_cb>on_req_method
         self._settings.on_req_path = <http_data_cb>on_req_path
         self._settings.on_req_http_version = <http_cb>on_req_http_version
-        self._settings.on_body = <http_data_cb>on_body
         self._settings.on_header_field = <http_data_cb>on_header_field
         self._settings.on_header_value = <http_data_cb>on_header_value
         self._settings.on_headers_complete = <http_cb>on_headers_complete
+        self._settings.on_body = <http_body_cb>on_body
         self._settings.on_message_complete = <http_cb>on_message_complete
 
     def __dealloc__(self):

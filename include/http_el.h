@@ -19,6 +19,7 @@ typedef struct pbuffer pbuffer;
 typedef struct http_parser http_parser;
 typedef struct http_parser_settings http_parser_settings;
 
+typedef int (*http_body_cb) (http_parser*, const char *at, size_t offset, size_t length);
 typedef int (*http_data_cb) (http_parser*, const char *at, size_t length);
 typedef int (*http_cb) (http_parser*);
 
@@ -48,6 +49,7 @@ enum HTTP_EL_ERROR {
     ELERR_BAD_HEADER_TOKEN = 8,
     ELERR_BAD_CONTENT_LENGTH = 9,
     ELERR_BAD_CHUNK_SIZE = 10,
+    ELERR_BAD_DATA_AFTER_CHUNK = 11,
 
     ELERR_BAD_METHOD = 100,
 
@@ -71,7 +73,7 @@ struct http_parser_settings {
     http_data_cb      on_header_field;
     http_data_cb      on_header_value;
     http_cb           on_headers_complete;
-    http_data_cb      on_body;
+    http_body_cb      on_body;
     http_cb           on_message_complete;
 };
 
