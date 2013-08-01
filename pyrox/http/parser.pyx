@@ -2,6 +2,11 @@ from libc.stdlib cimport malloc, free
 
 from cpython cimport bool, PyBytes_FromStringAndSize, PyBytes_FromString
 
+
+REQUEST_PARSER = 0
+RESPONSE_PARSER = 1
+
+
 cdef int on_req_method(http_parser *parser, char *data, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
     cdef object method_str = PyBytes_FromStringAndSize(data, length)
@@ -20,10 +25,18 @@ cdef int on_req_path(http_parser *parser, char *data, size_t length) except -1:
         raise ex
     return 0
 
-cdef int on_req_http_version(http_parser *parser) except -1:
+cdef int on_status(http_parser *parser) except -1:
     cdef object app_data = <object> parser.app_data
     try:
-        app_data.delegate.on_req_http_version(parser.http_major, parser.http_minor)
+        app_data.delegate.on_status(parser.status_code)
+    except Exception as ex:
+        raise ex
+    return 0
+
+cdef int on_http_version(http_parser *parser) except -1:
+    cdef object app_data = <object> parser.app_data
+    try:
+        app_data.delegate.on_http_version(parser.http_major, parser.http_minor)
     except Exception as ex:
         raise ex
     return 0
@@ -80,7 +93,7 @@ class ParserDelegate(object):
     def on_req_method(self, method):
         pass
 
-    def on_req_http_version(self, major, minor):
+    def on_http_version(self, major, minor):
         pass
 
     def on_req_path(self, url):
@@ -119,13 +132,13 @@ cdef class HttpEventParser(object):
     def __cinit__(self):
         self._parser = <http_parser *> malloc(sizeof(http_parser))
 
-    def __init__(self, object delegate, kind=0):
+    def __init__(self, object delegate, kind=REQUEST_PARSER):
         self.app_data = ParserData(delegate)
 
         # set parser type
-        if kind == 0:
+        if kind == REQUEST_PARSER:
             parser_type = HTTP_REQUEST
-        elif kind == 1:
+        elif kind == RESPONSE_PARSER:
             parser_type = HTTP_RESPONSE
         else:
             raise Exception('Kind must be 0 for requests or 1 for responses')
@@ -137,7 +150,8 @@ cdef class HttpEventParser(object):
         # set callbacks
         self._settings.on_req_method = <http_data_cb>on_req_method
         self._settings.on_req_path = <http_data_cb>on_req_path
-        self._settings.on_req_http_version = <http_cb>on_req_http_version
+        self._settings.on_http_version = <http_cb>on_http_version
+        self._settings.on_status = <http_cb>on_status
         self._settings.on_header_field = <http_data_cb>on_header_field
         self._settings.on_header_value = <http_data_cb>on_header_value
         self._settings.on_headers_complete = <http_cb>on_headers_complete

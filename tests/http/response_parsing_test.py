@@ -1,42 +1,47 @@
 import unittest
-import time
-import json
+import pyrox
 
-from pyrox.http import HttpEventParser, ParserDelegate
+NORMAL_RESPONSE = """HTTP/1.1 200 OK\r
+Content-Length: 12\r\n
+\r
+This is test"""
 
+CHUNKED_RESPONSE = """HTTP/1.1 200 OK\r
+Transfer-Encoding: chunked\r\n
+\r
+1e\r\nall your base are belong to us\r
+0\r
+"""
 
-STATUS_LINE = b'HTTP/1.1 200 OK\r\n'
-STATUS_LINE_LF_ONLY = b'HTTP/1.1 200 OK\nTest: test\r\n\r\n'
-HEADER = b'Content-Length: 0\r\n'
-MULTI_VALUE_HEADER = b'Test: test\r\nTest: test2\r\n'
-ARRAY_HEADER = b'Other: test, test, test\r\n'
-END = b'\r\n'
-
-
-FTEST = (
-    'HTTP/1.1 200 OK\n'
-    'Date: Wed, 17 Jul 2013 20:19:12 GMT\n'
-    'Vary: Accept-Encoding\n'
-    'Server: Apache/2.2.16\n'
-    'Connection: Keep-Alive\n'
-    'Content-Type: text/html; charset=UTF-8\n'
-    'X-Powered-By: PHP/5.3.3-7+squeeze15\n'
-    'Transfer-Encoding: chunked\n\n'
-    '4\r\n'
-    'TEST\r\n'
-    '0\r\n\r\n'
-)
-
-STATUS_CODE_SLOT = 'STATUS_CODE'
-HEADER_SLOT = 'HEADER'
+RESPONSE_HTTP_VERSION_SLOT = 'RESPONSE_HTTP_VERSION'
+RESPONSE_CODE_SLOT = 'RESPONSE_CODE'
+HEADER_FIELD_SLOT = 'HEADER_FIELD'
+HEADER_VALUE_SLOT = 'HEADER_VALUE'
+BODY_SLOT = 'BODY'
+BODY_COMPLETE_SLOT = 'BODY_COMPLETE'
 
 
-class TrackingDelegate(ParserDelegate):
+def chunk_message(data, parser, chunk_size=10, limit=-1):
+    if limit <= 0:
+        limit = len(data)
+    index = 0
+    while index < limit:
+        next_index = index + chunk_size
+        end_index = next_index if next_index < limit else limit
+        parser.execute(data[index:end_index], end_index - index)
+        index = end_index
+
+
+class TrackingDelegate(pyrox.ParserDelegate):
 
     def __init__(self, delegate):
         self.hits = {
-            STATUS_CODE_SLOT: 0,
-            HEADER_SLOT: 0
+            RESPONSE_HTTP_VERSION_SLOT: 0,
+            RESPONSE_CODE_SLOT: 0,
+            HEADER_FIELD_SLOT: 0,
+            HEADER_VALUE_SLOT: 0,
+            BODY_SLOT: 0,
+            BODY_COMPLETE_SLOT: 0
         }
 
         self.delegate = delegate
@@ -49,55 +54,85 @@ class TrackingDelegate(ParserDelegate):
             test.assertEquals(
                 expected[key],
                 self.hits[key],
-                'Failed on expected hits for key: {}'.format(key))
+                'Failed on expected hits for key: {} - was {} expected {}'.format(key, self.hits[key], expected[key]))
 
     def on_status(self, status_code):
-        self.register_hit(STATUS_CODE_SLOT)
+        self.register_hit(RESPONSE_CODE_SLOT)
         self.delegate.on_status(status_code)
 
-    def on_header(self, name, value):
-        self.register_hit(HEADER_SLOT)
-        self.delegate.on_header(name, value)
+    def on_http_version(self, major, minor):
+        self.register_hit(RESPONSE_HTTP_VERSION_SLOT)
+        self.delegate.on_http_version(major, minor)
+
+    def on_header_field(self, field):
+        self.register_hit(HEADER_FIELD_SLOT)
+        self.delegate.on_header_field(field)
+
+    def on_header_value(self, value):
+        self.register_hit(HEADER_VALUE_SLOT)
+        self.delegate.on_header_value(value)
+
+    def on_body(self, data):
+        self.register_hit(BODY_SLOT)
+        self.delegate.on_body(data)
+
+    def on_message_complete(self):
+        self.register_hit(BODY_COMPLETE_SLOT)
 
 
-class ValidatingDelegate(ParserDelegate):
+class ValidatingDelegate(pyrox.ParserDelegate):
 
     def __init__(self, test):
         self.test = test
+
+    def on_http_version(self, major, minor):
+        self.test.assertEquals(1, major)
+        self.test.assertEquals(1, minor)
 
     def on_status(self, status_code):
         self.test.assertEquals(200, status_code)
 
+    def on_header_field(self, field):
+        if field not in ['Transfer-Encoding', 'Content-Length', 'Connection']:
+            self.test.fail('Unexpected header field {}'.format(field))
 
-class MultiValueHeaderDelegate(ParserDelegate):
+    def on_header_value(self, value):
+        if value not in ['keep-alive', 'chunked', '12']:
+            self.test.fail('Unexpected header value {}'.format(value))
 
-    def __init__(self, test):
-        self.test = test
-        self.second_value = False
-
-    def on_header(self, name, value):
-        self.test.assertEquals('Test', name)
-
-        if not self.second_value:
-            self.test.assertEquals('test', value)
-            self.second_value = True
-        else:
-            self.test.assertEquals('test2', value)
-
-
-class ArrayValueHeaderDelegate(ParserDelegate):
-
-    def __init__(self, test):
-        self.test = test
-        self.second_value = False
-
-    def on_header(self, name, value):
-        self.test.assertEquals('Other', name)
-        self.test.assertEquals('test, test, test', value)
+    def on_body(self, data):
+        print('got {}'.format(data))
 
 
 class WhenParsingResponses(unittest.TestCase):
-    pass
+
+    def test_reading_request_with_content_length(self):
+        tracker = TrackingDelegate(ValidatingDelegate(self))
+        parser = pyrox.HttpEventParser(tracker, pyrox.RESPONSE_PARSER)
+
+        chunk_message(NORMAL_RESPONSE, parser)
+
+        tracker.validate_hits({
+            RESPONSE_HTTP_VERSION_SLOT: 1,
+            RESPONSE_CODE_SLOT: 1,
+            HEADER_FIELD_SLOT: 1,
+            HEADER_VALUE_SLOT: 1,
+            BODY_SLOT: 2,
+            BODY_COMPLETE_SLOT: 1}, self)
+
+    def test_reading_chunked_request(self):
+        tracker = TrackingDelegate(ValidatingDelegate(self))
+        parser = pyrox.HttpEventParser(tracker, pyrox.RESPONSE_PARSER)
+
+        chunk_message(CHUNKED_RESPONSE, parser)
+
+        tracker.validate_hits({
+            RESPONSE_HTTP_VERSION_SLOT: 1,
+            RESPONSE_CODE_SLOT: 1,
+            HEADER_FIELD_SLOT: 1,
+            HEADER_VALUE_SLOT: 1,
+            BODY_SLOT: 4,
+            BODY_COMPLETE_SLOT: 1}, self)
 
 
 if __name__ == '__main__':

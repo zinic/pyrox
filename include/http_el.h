@@ -50,6 +50,7 @@ enum HTTP_EL_ERROR {
     ELERR_BAD_CONTENT_LENGTH = 9,
     ELERR_BAD_CHUNK_SIZE = 10,
     ELERR_BAD_DATA_AFTER_CHUNK = 11,
+    ELERR_BAD_STATUS_CODE = 12,
 
     ELERR_BAD_METHOD = 100,
 
@@ -68,8 +69,8 @@ struct http_parser_settings {
     http_cb           on_message_begin;
     http_data_cb      on_req_method;
     http_data_cb      on_req_path;
-    http_cb           on_req_http_version;
-    http_data_cb      on_status;
+    http_cb           on_http_version;
+    http_cb           on_status;
     http_data_cb      on_header_field;
     http_data_cb      on_header_value;
     http_cb           on_headers_complete;

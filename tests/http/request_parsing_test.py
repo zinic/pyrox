@@ -69,9 +69,9 @@ class TrackingDelegate(ParserDelegate):
         self.register_hit(REQUEST_URI_SLOT)
         self.delegate.on_req_path(url)
 
-    def on_req_http_version(self, major, minor):
+    def on_http_version(self, major, minor):
         self.register_hit(REQUEST_HTTP_VERSION_SLOT)
-        self.delegate.on_req_http_version(major, minor)
+        self.delegate.on_http_version(major, minor)
 
     def on_header_field(self, field):
         self.register_hit(HEADER_FIELD_SLOT)
@@ -100,7 +100,7 @@ class ValidatingDelegate(ParserDelegate):
     def on_req_path(self, url):
         self.test.assertEquals('/test/12345?field=f1&field2=f2#fragment', url)
 
-    def on_req_http_version(self, major, minor):
+    def on_http_version(self, major, minor):
         self.test.assertEquals(1, major)
         self.test.assertEquals(1, minor)
 
