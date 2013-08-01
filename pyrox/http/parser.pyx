@@ -13,7 +13,8 @@ cdef int on_req_method(http_parser *parser, char *data, size_t length) except -1
     try:
         app_data.delegate.on_req_method(method_str)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_req_path(http_parser *parser, char *data, size_t length) except -1:
@@ -22,7 +23,8 @@ cdef int on_req_path(http_parser *parser, char *data, size_t length) except -1:
     try:
         app_data.delegate.on_req_path(req_path_str)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_status(http_parser *parser) except -1:
@@ -30,7 +32,8 @@ cdef int on_status(http_parser *parser) except -1:
     try:
         app_data.delegate.on_status(parser.status_code)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_http_version(http_parser *parser) except -1:
@@ -38,7 +41,8 @@ cdef int on_http_version(http_parser *parser) except -1:
     try:
         app_data.delegate.on_http_version(parser.http_major, parser.http_minor)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_header_field(http_parser *parser, char *data, size_t length) except -1:
@@ -47,7 +51,8 @@ cdef int on_header_field(http_parser *parser, char *data, size_t length) except 
     try:
         app_data.delegate.on_header_field(header_field)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_header_value(http_parser *parser, char *data, size_t length) except -1:
@@ -56,7 +61,8 @@ cdef int on_header_value(http_parser *parser, char *data, size_t length) except 
     try:
         app_data.delegate.on_header_value(header_value)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_headers_complete(http_parser *parser) except -1:
@@ -64,7 +70,8 @@ cdef int on_headers_complete(http_parser *parser) except -1:
     try:
         app_data.delegate.on_headers_complete()
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) except -1:
@@ -73,7 +80,8 @@ cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) 
     try:
         app_data.delegate.on_body(body_value)
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 cdef int on_message_complete(http_parser *parser) except -1:
@@ -81,7 +89,8 @@ cdef int on_message_complete(http_parser *parser) except -1:
     try:
         app_data.delegate.on_message_complete()
     except Exception as ex:
-        raise ex
+        app_data.exception = ex
+        return -1
     return 0
 
 
@@ -118,6 +127,7 @@ class ParserDelegate(object):
 cdef class ParserData(object):
 
     cdef public object delegate
+    cdef public object exception
 
     def __init__(self, delegate):
         self.delegate = delegate
@@ -161,7 +171,14 @@ cdef class HttpEventParser(object):
     def __dealloc__(self):
         free_http_parser(self._parser)
 
+    def is_chunked(self):
+        return http_transfer_encoding_chunked(self._parser)
+
     def execute(self, char *data, size_t length):
-        cdef int retval = http_parser_exec(self._parser, &self._settings, data, length)
+        cdef int retval = http_parser_exec(
+            self._parser, &self._settings, data, length)
         if retval:
-            raise Exception('Failed with errno: {}'.format(retval))
+            if self.app_data.exception:
+                raise self.app_data.exception
+            else:
+                raise Exception('Failed with errno: {}'.format(retval))

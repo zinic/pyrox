@@ -28,6 +28,6 @@ cdef extern from "http_el.h":
     void http_parser_init(http_parser *parser, http_parser_type ptype)
     void free_http_parser(http_parser *parser)
 
-    size_t http_parser_exec(http_parser *parser, http_parser_settings *settings, char *data, size_t len)
+    int http_parser_exec(http_parser *parser, http_parser_settings *settings, char *data, size_t len)
     int http_should_keep_alive(http_parser *parser)
-
+    int http_transfer_encoding_chunked(http_parser *parser)

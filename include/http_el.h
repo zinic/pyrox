@@ -112,6 +112,7 @@ void free_http_parser(http_parser *parser);
 
 int http_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len);
 int http_should_keep_alive(const http_parser *parser);
+int http_transfer_encoding_chunked(const http_parser *parser);
 
 #ifdef __cplusplus
 }

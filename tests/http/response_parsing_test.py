@@ -1,5 +1,5 @@
 import unittest
-import pyrox
+from pyrox.http import HttpEventParser, ParserDelegate, RESPONSE_PARSER
 
 NORMAL_RESPONSE = """HTTP/1.1 200 OK\r
 Content-Length: 12\r\n
@@ -32,7 +32,7 @@ def chunk_message(data, parser, chunk_size=10, limit=-1):
         index = end_index
 
 
-class TrackingDelegate(pyrox.ParserDelegate):
+class TrackingDelegate(ParserDelegate):
 
     def __init__(self, delegate):
         self.hits = {
@@ -80,7 +80,7 @@ class TrackingDelegate(pyrox.ParserDelegate):
         self.register_hit(BODY_COMPLETE_SLOT)
 
 
-class ValidatingDelegate(pyrox.ParserDelegate):
+class ValidatingDelegate(ParserDelegate):
 
     def __init__(self, test):
         self.test = test
@@ -94,11 +94,11 @@ class ValidatingDelegate(pyrox.ParserDelegate):
 
     def on_header_field(self, field):
         if field not in ['Transfer-Encoding', 'Content-Length', 'Connection']:
-            self.test.fail('Unexpected header field {}'.format(field))
+            raise Exception('Unexpected header field {}'.format(field))
 
     def on_header_value(self, value):
         if value not in ['keep-alive', 'chunked', '12']:
-            self.test.fail('Unexpected header value {}'.format(value))
+            raise Exception('Unexpected header value {}'.format(value))
 
     def on_body(self, data):
         print('got {}'.format(data))
@@ -108,7 +108,7 @@ class WhenParsingResponses(unittest.TestCase):
 
     def test_reading_request_with_content_length(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = pyrox.HttpEventParser(tracker, pyrox.RESPONSE_PARSER)
+        parser = HttpEventParser(tracker, RESPONSE_PARSER)
 
         chunk_message(NORMAL_RESPONSE, parser)
 
@@ -122,7 +122,7 @@ class WhenParsingResponses(unittest.TestCase):
 
     def test_reading_chunked_request(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = pyrox.HttpEventParser(tracker, pyrox.RESPONSE_PARSER)
+        parser = HttpEventParser(tracker, RESPONSE_PARSER)
 
         chunk_message(CHUNKED_RESPONSE, parser)
 

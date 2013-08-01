@@ -168,6 +168,7 @@ enum http_el_state {
     s_chunk_data,
     s_chunk_complete,
     s_body_complete,
+    s_message_end,
 
     // Reponse states
     s_resp_start,
@@ -382,16 +383,32 @@ void reset_http_parser(http_parser *parser) {
         parser->type == HTTP_REQUEST ? s_req_start : s_resp_start);
 }
 
+int read_message_end(http_parser *parser, const http_parser_settings *settings, char next_byte) {
+    int errno = 0;
+
+    switch (next_byte) {
+        case CR:
+        case LF:
+            break;
+
+        default:
+            if (parser->type == HTTP_REQUEST) {
+            } else {
+            }
+    }
+
+    return errno;
+}
 
 int read_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t offset, size_t length) {
     int errno = 0, real_length = length - offset;
     size_t read = 0;
 
     if (parser->content_length >= real_length) {
-        settings->on_body(parser, data, offset, real_length);
+        errno = settings->on_body(parser, data, offset, real_length);
         read = real_length;
     } else {
-        settings->on_body(parser, data, offset, parser->content_length);
+        errno = settings->on_body(parser, data, offset, parser->content_length);
         read = parser->content_length;
     }
 
@@ -940,9 +957,13 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
                 errno = ELERR_BAD_STATE;
         }
 
-        if (parser->state == s_body_complete) {
-            on_cb(parser, settings->on_message_complete);
+        if (!errno && parser->state == s_body_complete) {
+            errno = on_cb(parser, settings->on_message_complete);
             reset_http_parser(parser);
+        }
+
+        if (errno) {
+            break;
         }
     }
 
@@ -979,7 +1000,7 @@ int read_response_status(http_parser *parser, const http_parser_settings *settin
     } else {
         switch (next_byte) {
             case ' ':
-                on_cb(parser, settings->on_status);
+                errno = on_cb(parser, settings->on_status);
                 set_http_state(parser, s_resp_rphrase);
                 break;
 
@@ -1063,9 +1084,13 @@ int response_parser_exec(http_parser *parser, const http_parser_settings *settin
                 errno = ELERR_BAD_STATE;
         }
 
-        if (parser->state == s_body_complete) {
-            on_cb(parser, settings->on_message_complete);
+        if (!errno && parser->state == s_body_complete) {
+            errno = on_cb(parser, settings->on_message_complete);
             reset_http_parser(parser);
+        }
+
+        if (errno) {
+            break;
         }
     }
 
@@ -1143,5 +1168,9 @@ int http_should_keep_alive(const http_parser *parser) {
     }
 
     return !http_message_needs_eof(parser);
+}
+
+int http_transfer_encoding_chunked(const http_parser *parser) {
+    return parser->flags & F_CHUNKED;
 }
 
