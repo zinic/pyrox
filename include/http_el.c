@@ -354,14 +354,14 @@ char * http_header_state_name(header_state state) {
 
 void set_http_state(http_parser *parser, http_el_state state) {
 #if DEBUG_OUTPUT
-    printf("State changed %s\n", http_el_state_name(state));
+    printf("State changed --> %s\n", http_el_state_name(state));
 #endif
     parser->state = state;
 }
 
 void set_header_state(http_parser *parser, header_state state) {
 #if DEBUG_OUTPUT
-    printf("Header state changed %s\n", http_header_state_name(state));
+    printf("Header state changed --> %s\n", http_header_state_name(state));
 #endif
     parser->header_state = state;
 }
@@ -886,9 +886,19 @@ int read_request_method(http_parser *parser, const http_parser_settings *setting
 }
 
 int start_request(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-    // Set state before calling the next function incase the function sets the state
-    set_http_state(parser, s_req_method);
-    return read_request_method(parser, settings, next_byte);
+    int errno = 0;
+
+    switch (next_byte) {
+        case CR:
+        case LF:
+            break;
+
+        default:
+            set_http_state(parser, s_req_method);
+            errno = read_request_method(parser, settings, next_byte);
+    }
+
+    return errno;
 }
 
 int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
@@ -963,6 +973,7 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
         }
 
         if (errno) {
+            reset_http_parser(parser);
             break;
         }
     }
@@ -1001,6 +1012,7 @@ int read_response_status(http_parser *parser, const http_parser_settings *settin
         switch (next_byte) {
             case ' ':
                 errno = on_cb(parser, settings->on_status);
+                printf("ERROR IS %i", errno);
                 set_http_state(parser, s_resp_rphrase);
                 break;
 
@@ -1013,9 +1025,19 @@ int read_response_status(http_parser *parser, const http_parser_settings *settin
 }
 
 int start_response(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-    // Set state before calling the next function incase the function sets the state
-    set_http_state(parser, s_http_version_head);
-    return read_http_version_head(parser, settings, next_byte);
+    int errno = 0;
+
+    switch (next_byte) {
+        case CR:
+        case LF:
+            break;
+
+        default:
+            set_http_state(parser, s_http_version_head);
+            errno = read_http_version_head(parser, settings, next_byte);
+    }
+
+    return errno;
 }
 
 int response_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
@@ -1023,7 +1045,7 @@ int response_parser_exec(http_parser *parser, const http_parser_settings *settin
 
     for (d_index = 0; d_index < length; d_index++) {
         char next_byte = data[d_index];
-
+        printf("%c", next_byte);
         switch (parser->state) {
             case s_http_version_head:
                 errno = read_http_version_head(parser, settings, next_byte);
@@ -1090,6 +1112,7 @@ int response_parser_exec(http_parser *parser, const http_parser_settings *settin
         }
 
         if (errno) {
+            reset_http_parser(parser);
             break;
         }
     }

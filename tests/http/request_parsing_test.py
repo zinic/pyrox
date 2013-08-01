@@ -4,7 +4,7 @@ from pyrox.http import HttpEventParser, ParserDelegate, REQUEST_PARSER
 
 UNEXPECTED_HEADER_REQUEST = \
 """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
-Test:
+Test: test\r
 Connection: keep-alive\r
 Content-Length: 12\r\n
 \r
@@ -122,6 +122,7 @@ class ValidatingDelegate(ParserDelegate):
 
     def on_body(self, data):
         print('got {}'.format(data))
+
 
 class WhenParsingRequests(unittest.TestCase):
 

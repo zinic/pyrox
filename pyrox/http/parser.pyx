@@ -1,13 +1,14 @@
 from libc.stdlib cimport malloc, free
-
 from cpython cimport bool, PyBytes_FromStringAndSize, PyBytes_FromString
+
+import traceback
 
 
 REQUEST_PARSER = 0
 RESPONSE_PARSER = 1
 
 
-cdef int on_req_method(http_parser *parser, char *data, size_t length) except -1:
+cdef int on_req_method(http_parser *parser, char *data, size_t length):
     cdef object app_data = <object> parser.app_data
     cdef object method_str = PyBytes_FromStringAndSize(data, length)
     try:
@@ -17,7 +18,7 @@ cdef int on_req_method(http_parser *parser, char *data, size_t length) except -1
         return -1
     return 0
 
-cdef int on_req_path(http_parser *parser, char *data, size_t length) except -1:
+cdef int on_req_path(http_parser *parser, char *data, size_t length):
     cdef object app_data = <object> parser.app_data
     cdef object req_path_str = PyBytes_FromStringAndSize(data, length)
     try:
@@ -27,7 +28,7 @@ cdef int on_req_path(http_parser *parser, char *data, size_t length) except -1:
         return -1
     return 0
 
-cdef int on_status(http_parser *parser) except -1:
+cdef int on_status(http_parser *parser):
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_status(parser.status_code)
@@ -36,7 +37,7 @@ cdef int on_status(http_parser *parser) except -1:
         return -1
     return 0
 
-cdef int on_http_version(http_parser *parser) except -1:
+cdef int on_http_version(http_parser *parser):
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_http_version(parser.http_major, parser.http_minor)
@@ -45,7 +46,7 @@ cdef int on_http_version(http_parser *parser) except -1:
         return -1
     return 0
 
-cdef int on_header_field(http_parser *parser, char *data, size_t length) except -1:
+cdef int on_header_field(http_parser *parser, char *data, size_t length):
     cdef object app_data = <object> parser.app_data
     cdef object header_field = PyBytes_FromStringAndSize(data, length)
     try:
@@ -55,7 +56,7 @@ cdef int on_header_field(http_parser *parser, char *data, size_t length) except 
         return -1
     return 0
 
-cdef int on_header_value(http_parser *parser, char *data, size_t length) except -1:
+cdef int on_header_value(http_parser *parser, char *data, size_t length):
     cdef object app_data = <object> parser.app_data
     cdef object header_value = PyBytes_FromStringAndSize(data, length)
     try:
@@ -65,7 +66,7 @@ cdef int on_header_value(http_parser *parser, char *data, size_t length) except 
         return -1
     return 0
 
-cdef int on_headers_complete(http_parser *parser) except -1:
+cdef int on_headers_complete(http_parser *parser):
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_headers_complete()
@@ -74,7 +75,7 @@ cdef int on_headers_complete(http_parser *parser) except -1:
         return -1
     return 0
 
-cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) except -1:
+cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length):
     cdef object app_data = <object> parser.app_data
     cdef object body_value = PyBytes_FromStringAndSize(data + offset, length)
     try:
@@ -84,7 +85,7 @@ cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) 
         return -1
     return 0
 
-cdef int on_message_complete(http_parser *parser) except -1:
+cdef int on_message_complete(http_parser *parser):
     cdef object app_data = <object> parser.app_data
     try:
         app_data.delegate.on_message_complete()
@@ -179,6 +180,7 @@ cdef class HttpEventParser(object):
             self._parser, &self._settings, data, length)
         if retval:
             if self.app_data.exception:
+                traceback.print_exc(self.app_data.exception)
                 raise self.app_data.exception
             else:
                 raise Exception('Failed with errno: {}'.format(retval))

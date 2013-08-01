@@ -31,7 +31,8 @@ class ProxyHandler(ParserDelegate):
             self.reading_transfer_encoding = True
         elif lower == 'host':
             self.rewrite_host_header = True
-        #print('{}: '.format(field), end='')
+
+        print('{}: '.format(field), end='')
         self.stream.write(field)
         self.stream.write(b': ')
 
@@ -39,23 +40,26 @@ class ProxyHandler(ParserDelegate):
         if self.reading_transfer_encoding and value.lower() == 'chunked':
             self.reading_transfer_encoding = False
             self.transfer_encoding_chunked = True
-        #print(value)
+        print(value)
         self.stream.write(value)
         self.stream.write(b'\r\n')
 
     def on_headers_complete(self):
-        #print('\r\n', end='')
+        print('\r\n', end='')
         self.stream.write(b'\r\n')
 
     def on_body(self, bytes):
         if self.transfer_encoding_chunked:
             hex_len = hex(len(bytes))[2:].upper()
-            #print('{}\r\n'.format(hex_len))
+            print('{}\r\n'.format(hex_len))
             self.stream.write(hex_len)
             self.stream.write(b'\r\n')
+            print(bytes)
             self.stream.write(bytes)
+            print('\r\n')
             self.stream.write(b'\r\n')
         else:
+            print(bytes)
             self.stream.write(bytes)
 
     def on_message_complete(self):
@@ -70,22 +74,22 @@ class UpstreamProxyHandler(ProxyHandler):
         self.downstream_host = downstream_host
 
     def on_req_method(self, method):
-        #print('{} '.format(method), end='')
+        print('{} '.format(method), end='')
         self.stream.write(method)
         self.stream.write(b' ')
 
     def on_req_path(self, url):
-        #print(url, end='')
+        print(url, end='')
         self.stream.write(url)
 
     def on_http_version(self, major, minor):
-        #print(' HTTP/1.1')
+        print(' HTTP/1.1')
         self.stream.write(b' HTTP/1.1\r\n')
 
     def on_header_value(self, value):
         if self.rewrite_host_header:
             self.rewrite_host_header = False
-            #print(self.downstream_host)
+            print(self.downstream_host)
             self.stream.write(self.downstream_host)
             self.stream.write(b'\r\n')
         else:
@@ -98,10 +102,8 @@ class DownstreamProxyHandler(ProxyHandler):
         super(DownstreamProxyHandler, self).__init__(filter_handler, upstream)
 
     def on_status(self, status_code):
-        #print('HTTP/1.1 {} SC Not Enabled\r\n'.format(status_code), end='')
-        self.stream.write(b'HTTP/1.1 ')
-        self.stream.write(status_code)
-        self.stream.write(b' SC Not Enabled\r\n')
+        print('HTTP/1.1 {} SC Not Enabled'.format(status_code))
+        self.stream.write(b'HTTP/1.1 {}SC Not Enabled\r\n'.format(status_code))
 
 
 class FilterHandler(ParserDelegate):
@@ -156,13 +158,14 @@ class ProxyConnection(object):
         try:
             self.upstream_parser.execute(data, len(data))
         except Exception as ex:
-            print(ex)
+            raise ex
 
     def _on_downstream_read(self, data):
+        print(data)
         try:
             self.downstream_parser.execute(data, len(data))
         except Exception as ex:
-            print(ex)
+            raise ex
 
 
 class TornadoHttpProxy(TCPServer):
