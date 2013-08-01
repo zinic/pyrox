@@ -1,7 +1,7 @@
 import unittest
 import time
 
-from pyrox.http import HttpEventParser, ParserDelegate
+import pyrox
 
 NORMAL_REQUEST = """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
 Connection: keep-alive\r
@@ -11,7 +11,8 @@ This is test"""
 
 
 def performance(duration=10, print_output=True):
-    parser = HttpEventParser(ParserDelegate())
+    parser = pyrox.HttpEventParser(
+        pyrox.ParserDelegate(), pyrox.REQUEST_PARSER)
 
     runs = 0
     then = time.time()

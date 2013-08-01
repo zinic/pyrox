@@ -12,6 +12,12 @@ try:
 except ImportError:
     has_cython = False
 
+COMPILER_ARGS = list()
+
+DEBUG = os.getenv('DEBUG')
+
+if DEBUG and DEBUG.lower() == 'true':
+    COMPILER_ARGS.append('-D DEBUG_OUTPUT')
 
 def read(relative):
     contents = open(relative, 'r').read()
@@ -48,7 +54,8 @@ def package_c():
     extensions.append(Extension(
         'pyrox.http.parser',
         include_dirs=['include/'],
-        sources=['include/http_el.c', 'pyrox/http/parser.c']))
+        sources=['include/http_el.c', 'pyrox/http/parser.c'],
+        extra_compile_args=COMPILER_ARGS))
     return extensions
 
 ext_modules = None

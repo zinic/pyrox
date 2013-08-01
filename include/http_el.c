@@ -269,6 +269,7 @@ int on_data_cb(http_parser *parser, http_data_cb cb) {
     return cb(parser, parser->buffer->bytes, parser->buffer->position);
 }
 
+#if DEBUG_OUTPUT
 char * http_el_state_name(http_el_state state) {
     switch (state) {
         case s_req_start:
@@ -348,14 +349,19 @@ char * http_header_state_name(header_state state) {
             return "ERROR - NOT A STATE";
     }
 }
+#endif
 
 void set_http_state(http_parser *parser, http_el_state state) {
+#if DEBUG_OUTPUT
     printf("State changed %s\n", http_el_state_name(state));
+#endif
     parser->state = state;
 }
 
 void set_header_state(http_parser *parser, header_state state) {
+#if DEBUG_OUTPUT
     printf("Header state changed %s\n", http_header_state_name(state));
+#endif
     parser->header_state = state;
 }
 
@@ -389,10 +395,8 @@ int read_body(http_parser *parser, const http_parser_settings *settings, const c
         read = parser->content_length;
     }
 
-    printf("Offset is %i - Real length is %i - Data length is %i - Content length is %i\n", offset, real_length, length, parser->content_length);
     parser->content_length -= read;
     parser->bytes_read += read;
-    printf("Read %i bytes with content length now equal to %i\n", read, parser->content_length);
 
     if (parser->content_length == 0) {
         switch(parser->state) {
@@ -451,8 +455,6 @@ int read_chunk_size(http_parser *parser, const http_parser_settings *settings, c
     unsigned char unhex_val;
     unsigned long t;
 
-    printf("On size -> %c\n", next_byte);
-
     switch (next_byte) {
         case CR:
             break;
@@ -474,7 +476,7 @@ int read_chunk_size(http_parser *parser, const http_parser_settings *settings, c
 
         default:
             unhex_val = unhex[(unsigned char)next_byte];
-            printf("Unhex(%c) == %i\n", next_byte, unhex_val);
+
             if (unhex_val == -1) {
                 errno = ELERR_BAD_CHUNK_SIZE;
             } else {
@@ -601,7 +603,6 @@ int read_header_value(http_parser *parser, const http_parser_settings *settings,
         case ' ':
             // Skip leading whitespace
             if (parser->bytes_read == 0) {
-                printf("Skipping leading whitespace\n");
                 break;
             }
 
@@ -630,7 +631,6 @@ int read_header_field_by_state(http_parser *parser, const http_parser_settings *
 
         case h_matching_con:
             parser->index += 1;
-            printf("Index is %i - Matching con -> %c\n", parser->index, lower);
             if (parser->index < sizeof(CON) - 1 && lower != CON[parser->index]) {
                 set_header_state(parser, h_general);
             } else if (parser->index == sizeof(CON) - 1) {
