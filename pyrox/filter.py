@@ -3,33 +3,55 @@ import re
 import pyrox.http as http
 
 
-#DROP_HEADERS
-#ADD_HEADERS
-#REPLACE_HEADERS
-#CONSUME
+ADD_HEADER = 1
+REWRITE_HEADER = 2
+CONSUME_EVENT = 3
+PROXY_REQUEST = 4
+REJECT_REQUEST = 5
 
 
 class FilterAction(object):
 
-    def __init__(self, action_enum, *args):
-        self.action_enum = action_enum
+    def __init__(self, kind, *args):
+        self.kind = kind
         self.args = args
 
 
 class HttpFilterChain(object):
 
-    def __init__(self):
+    def __init__(self, stream):
         self.chain = list()
+        self.stream = stream
 
     def add_filter(self, http_filter):
         self.chain.append(http_filter)
 
     def on_header(self, field, value):
+        request_control = PROXY_REQUEST
         for http_filter in self.chain:
-            action = http_filter.on_header(field, value)
-            if action:
-                # do action
-                pass
+            action_list = http_filter.on_header(field, value)
+            if action_list and len(action_list) > 0:
+                request_control = self._perform_actions(action_list)
+                if request_control and (request_control == REJECT_REQUEST or request_control == CONSUME_EVENT):
+                        break
+        return request_control
+
+    def _perform_actions(self, current_header_field, actions):
+        request_control = None
+        for action in actions:
+            if action.kind == ADD_HEADER and len(action.args) == 2:
+                self.stream.write(b'{}: {}\r\n'.format(
+                    action.args[0],
+                    action.args[1]))
+            elif action.kind == REWRITE_HEADER and len(action.args) == 1:
+                self.stream.write(b'{}: {}\r\n'.format(
+                    current_header_field,
+                    action.args[0]))
+            elif action.kind == CONSUME_EVENT:
+                request_control = CONSUME_EVENT
+            elif action.kind == REJECT_REQUEST:
+                request_control = REJECT_REQUEST
+        return request_control
 
 
 class HttpMessageSelector(object):
@@ -95,5 +117,5 @@ class FilterHandler(http.ParserDelegate):
 
 class HttpFilter(object):
 
-    def on_header(self, field, value):
+    def on_header(self, field, values):
         pass
