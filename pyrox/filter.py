@@ -3,15 +3,15 @@ import re
 import pyrox.http as http
 
 
-DROP_HEADERS
-ADD_HEADERS
-REPLACE_HEADERS
-CONSUME
+#DROP_HEADERS
+#ADD_HEADERS
+#REPLACE_HEADERS
+#CONSUME
 
 
 class FilterAction(object):
 
-    self __init__(self, action_enum, *args):
+    def __init__(self, action_enum, *args):
         self.action_enum = action_enum
         self.args = args
 
@@ -25,33 +25,34 @@ class HttpFilterChain(object):
         self.chain.append(http_filter)
 
     def on_header(self, field, value):
-        for http_filter in chain:
+        for http_filter in self.chain:
             action = http_filter.on_header(field, value)
             if action:
-                pass #do action
+                # do action
+                pass
 
 
 class HttpMessageSelector(object):
 
     def __init__(
             self,
+            path_re,
             interested_codes=None,
-            interested_methods=None,
-            path_re):
-        self.interested_codes =
+            interested_methods=None):
+        self.interested_codes =\
             interested_codes if interested_codes else list()
-        self.interested_methods =
+        self.interested_methods =\
             interested_methods if interested_codes else list()
         self.path_re = re.compile(path_re)
 
     def wants_status(self, status_code):
-        return status_code in interested_codes
+        return status_code in self.interested_codes
 
     def wants_path(self, path):
         return self.path_re.matches(path)
 
     def wants_method(self, method):
-        return method.lower() in interested_methods
+        return method.lower() in self.interested_methods
 
 
 class FilterOptions(object):
@@ -69,15 +70,15 @@ class FilterHandler(http.ParserDelegate):
         self.current_header_field = None
 
     def on_status(self, status_code):
-        if options.selector.wants_status(status_code):
+        if self.options.selector.wants_status(status_code):
             self.is_interested = True
 
     def on_req_method(self, method):
-        if options.selector.wants_method(method):
+        if self.options.selector.wants_method(method):
             self.is_interested = True
 
     def on_req_path(self, url):
-        if self.is_interested and not options.selector.wants_path(url):
+        if self.is_interested and not self.options.selector.wants_path(url):
             self.is_interested = False
 
     def on_header_field(self, field):
@@ -95,7 +96,4 @@ class FilterHandler(http.ParserDelegate):
 class HttpFilter(object):
 
     def on_header(self, field, value):
-    """
-    """
         pass
-

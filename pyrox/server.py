@@ -8,8 +8,8 @@ from tornado.iostream import IOStream
 from tornado.tcpserver import TCPServer
 
 from .env import get_logger
-from .http import HttpEventParser, ParserDelegate, REQUEST_PARSER, RESPONSE_PARSER
-
+from .http import HttpEventParser, ParserDelegate, REQUEST_PARSER,\
+    RESPONSE_PARSER
 
 
 _LOG = get_logger(__name__)
@@ -27,7 +27,7 @@ class ProxyHandler(ParserDelegate):
     def on_header_field(self, field):
         lower = field.lower()
 
-        if lower =='transfer-encoding':
+        if lower == 'transfer-encoding':
             self.reading_transfer_encoding = True
         elif lower == 'host':
             self.rewrite_host_header = True
@@ -132,10 +132,13 @@ class ProxyConnection(object):
     def __init__(self, upstream, downstream, downstream_host):
         self.upstream = upstream
         self.downstream = downstream
-        self.upstream_handler = UpstreamProxyHandler(None, downstream, downstream_host)
-        self.upstream_parser = HttpEventParser(self.upstream_handler, REQUEST_PARSER)
+        self.upstream_handler = UpstreamProxyHandler(
+            None, downstream, downstream_host)
+        self.upstream_parser = HttpEventParser(
+            self.upstream_handler, REQUEST_PARSER)
         self.downstream_handler = DownstreamProxyHandler(None, upstream)
-        self.downstream_parser = HttpEventParser(self.downstream_handler, RESPONSE_PARSER)
+        self.downstream_parser = HttpEventParser(
+            self.downstream_handler, RESPONSE_PARSER)
 
     def on_downstream_connect(self):
         # Set our callbacks
@@ -189,7 +192,8 @@ class TornadoHttpProxy(TCPServer):
         connection_handler = ProxyConnection(
             upstream,
             downstream,
-            '{}:{}'.format(self.downstream_target[0], self.downstream_target[1]))
+            '{}:{}'.format(
+                self.downstream_target[0], self.downstream_target[1]))
         downstream.connect(
             self.downstream_target,
             connection_handler.on_downstream_connect)
