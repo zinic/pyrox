@@ -113,6 +113,7 @@ class UpstreamProxyHandler(ProxyHandler):
             self.request.version))
         commit_message_headers(self.downstream, self.request.headers)
 
+
 class DownstreamProxyHandler(ProxyHandler):
 
     def __init__(self, filter_chain, upstream):
@@ -146,7 +147,7 @@ class DownstreamProxyHandler(ProxyHandler):
         message_control = self.filter_chain.on_response(self.response)
         if message_control.should_reject():
             self.upstream.write(
-                b'HTTP/1.1 400 Rejected\r\n\r\n'.format(status_code))
+                b'HTTP/1.1 400 Rejected\r\n\r\n')
         else:
             self._commit_message_head()
 
@@ -226,9 +227,9 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
             connection_handler.on_downstream_connect)
 
 
-def new_server(address, filter_chain_constructor, processes=0, downstream_target=None):
+def new_server(address, filter_chain_constructor,
+               processes=0, downstream_target=None):
     tcp_proxy = TornadoHttpProxy(filter_chain_constructor, downstream_target)
     tcp_proxy.bind(address=address[0], port=address[1])
     tcp_proxy.start()
     tornado.ioloop.IOLoop.instance().start()
-
