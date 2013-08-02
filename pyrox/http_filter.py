@@ -47,9 +47,9 @@ class HttpFilterChain(object):
     def on_request(self, request):
         message_control = MessageControl()
         for http_filter in self.chain:
-            action_list = http_filter.on_request(request)
-            if action_list and len(action_list) > 0:
-                self._perform_actions(message_control, action_list)
+            action = http_filter.on_request(request)
+            if action:
+                self._handle_action(message_control, action)
                 if message_control.should_consume() or message_control.should_reject():
                         break
         return message_control
@@ -57,28 +57,20 @@ class HttpFilterChain(object):
     def on_response(self, response):
         message_control = MessageControl()
         for http_filter in self.chain:
-            action_list = http_filter.on_response(response)
-            if action_list and len(action_list) > 0:
-                self._perform_actions(message_control, action_list)
+            action = http_filter.on_response(response)
+            if action:
+                self._handle_action(message_control, action)
                 if message_control.should_consume() or message_control.should_reject():
                         break
         return message_control
 
-    def _perform_actions(self, message_control, actions):
-        for action in actions:
-            if action.kind == ADD_HEADER and len(action.args) == 2:
-                #Adding a header requires the name and value
-                message_control.add_action(action)
-
-            elif action.kind == REWRITE_HEADER and len(action.args) == 2:
-                #Rewriting a header requires the name and value
-                message_control.add_action(action)
-
-            elif action.kind == CONSUME_EVENT:
-                message_control.control = CONSUME_EVENT
-            elif action.kind == REJECT_REQUEST:
-                message_control.control = REJECT_REQUEST
-        return message_control
+    def _handle_action(self, message_control, action):
+        if action.kind == CONSUME_EVENT:
+            message_control.control = CONSUME_EVENT
+        elif action.kind == REJECT_REQUEST:
+            message_control.control = REJECT_REQUEST
+        else:
+            message_control.control = PROXY_REQUEST
 
 
 class HttpMessageSelector(object):

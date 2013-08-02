@@ -101,7 +101,7 @@ class UpstreamProxyHandler(ProxyHandler):
         message_control = self.filter_chain.on_request(self.request)
         if message_control.should_reject():
             self.upstream.write(
-                b'HTTP/1.1 400 Rejected\r\n\r\n'.format(status_code))
+                b'HTTP/1.1 400 Rejected\r\nContent-Length: 0\r\n\r\n')
         else:
             self._commit_message_head()
 
@@ -189,6 +189,7 @@ class ProxyConnection(object):
 
     def _on_upstream_read(self, data):
         try:
+            print('THE DATA: {}\nEND DATA'.format(data))
             self.upstream_parser.execute(data, len(data))
         except Exception as ex:
             raise ex

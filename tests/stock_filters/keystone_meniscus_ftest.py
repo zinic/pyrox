@@ -32,7 +32,8 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
                                  tenant_name=self.tenant_name,
                                  auth_url=self.auth_url)
         token = keystone.auth_token
-
+        print('TOKEN BRO: {}'.format(keystone.auth_token))
+        self.fail()
         auth_header = http_filter.HttpHeader(name="X-AUTH-TOKEN")
         auth_header.values.append(token)
         headers = {auth_header.name.lower(): auth_header}
@@ -65,3 +66,7 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
         meniscus_filter = MeniscusKeystoneFilter()
         returned_action = meniscus_filter.on_request(req_message)
         self.assertEqual(returned_action.kind, http_filter.REJECT_REQUEST)
+
+
+if __name__ == '__main__':
+    unittest.main()
