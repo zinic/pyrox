@@ -57,13 +57,13 @@ class HttpFilterChain(object):
     def _perform_actions(self, message_control, actions):
         for action in actions:
             if action.kind == ADD_HEADER and len(action.args) == 2:
-
                 #Adding a header requires the name and value
                 message_control.add_action(action)
-            elif action.kind == REWRITE_HEADER and len(action.args) == 2:
 
+            elif action.kind == REWRITE_HEADER and len(action.args) == 2:
                 #Rewriting a header requires the name and value
                 message_control.add_action(action)
+
             elif action.kind == CONSUME_EVENT:
                 message_control.control = CONSUME_EVENT
             elif action.kind == REJECT_REQUEST:
@@ -134,5 +134,50 @@ class FilterHandler(http.ParserDelegate):
 
 class HttpFilter(object):
 
-    def on_header(self, field, values):
+    def on_request(self, request_message):
+        """
+        on_request will accept an HttpRequestMessage object and implement
+        the logic that will define the FilterActions to be applied
+        to the request
+        """
         pass
+
+    def on_response(self, response_message):
+        """
+        on_response will accept an HttpResponseMessage object and implement
+        the logic that will define the FilterActions to be applied
+        to the request
+        """
+        pass
+
+
+class HttpRequestMessage(object):
+    """
+    HttpRequestMessage defines the Http request attributes that
+    will be available to a HttpFilter
+    """
+    def __init__(self, url, method, version, headers=None ):
+        self.url = url
+        self.method = method
+        self.version = version
+        if headers is None:
+            self.headers = dict()
+
+class HttpResponseMessage(object):
+    """
+    HttpResponseMessage defines the Http response attributes that
+    will be available to a HttpFilter
+    """
+    def __init__(self, status_code, version, headers=None):
+        self.status_code = status_code
+        self.version = version
+        if headers is None:
+            self.headers = dict()
+
+class HttpHeader(object):
+    """
+    defines the fields for a Http header
+    """
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
