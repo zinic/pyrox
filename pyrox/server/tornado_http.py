@@ -189,7 +189,6 @@ class ProxyConnection(object):
 
     def _on_upstream_read(self, data):
         try:
-            print('THE DATA: {}\nEND DATA'.format(data))
             self.upstream_parser.execute(data, len(data))
         except Exception as ex:
             raise ex
