@@ -1,14 +1,13 @@
 from __future__ import print_function
 
 import socket
+
 import tornado
+import tornado.iostream as iostream
+import tornado.tcpserver as tcpserver
 
-from tornado.ioloop import IOLoop
-from tornado.iostream import IOStream
-from tornado.tcpserver import TCPServer
-
-from .env import get_logger
-from .http import HttpEventParser, ParserDelegate, REQUEST_PARSER,\
+from pyrox.env import get_logger
+from pyrox.http import HttpEventParser, ParserDelegate, REQUEST_PARSER,\
     RESPONSE_PARSER
 
 
@@ -171,23 +170,25 @@ class ProxyConnection(object):
             raise ex
 
 
-class TornadoHttpProxy(TCPServer):
+class TornadoHttpProxy(tornado.tcpserver.TCPServer):
 
-    def __init__(self, address, ssl_options=None, downstream_target=None):
-        super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
+    def __init__(self, address, downstream_target=None, io_loop=None):
+        super(TornadoHttpProxy, self).__init__(io_loop=io_loop)
+        self.io_loop = io_loop
         self.address = address
         self.downstream_target = downstream_target
 
-    def start(self, processes=0):
+    def start_up(self, processes=0):
         # bind() args are port, address
         self.bind(self.address[1], self.address[0])
         super(TornadoHttpProxy, self).start(processes)
         _LOG.info('TCP server running on: {0}:{1}',
                   self.address[0], self.address[1])
+        self.ioloop.start()
 
     def handle_stream(self, upstream, address):
         ds_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-        downstream = tornado.iostream.IOStream(ds_sock)
+        downstream = tornado.iostream.IOStream(ds_sock, io_loop=self.io_loop2)
 
         connection_handler = ProxyConnection(
             upstream,
@@ -199,5 +200,6 @@ class TornadoHttpProxy(TCPServer):
             connection_handler.on_downstream_connect)
 
 
-def start_io():
-    IOLoop.instance().start()
+def new_server(address, downstream_target=None):
+    io_loop = tornado.ioloop.IOLoop()
+    return TornadoHttpProxy(address, downstream_target, io_loop)

@@ -13,40 +13,6 @@ Transfer-Encoding: chunked\r\n
 0\r
 """
 
-REAL_RESPONSE = """HTTP/1.1 200 OK
-Date: Thu, 01 Aug 2013 21:04:08 GMT
-Vary: Accept-Encoding
-Server: Apache/2.2.16
-X-Cache: MISS from 50.56.228.100
-Connection: Keep-Alive
-X-Pingback: http://www.liblognorm.com/xmlrpc.php
-Content-Type: text/html; charset=UTF-8
-X-Powered-By: PHP/5.3.3-7+squeeze15
-Transfer-Encoding: chunked
-
-4073
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US">
-
-<head profile="http://gmpg.org/xfn/11">
-<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-
-<title>
-liblognorm</title>
-
-<link rel="stylesheet" href="http://www.liblognorm.com/wp-content/themes/liblognorm/style.css" type="text/css" media="screen" />
-<link rel="pingback" href="http://www.liblognorm.com/xmlrpc.php" />
-
-
-
-<link rel="alternate" type="application/rss+xml" title="liblognorm &raquo; Feed" href="http://www.liblognorm.com/feed/" />
-<link rel="alternate" type="application/rss+xml" title="liblognorm &raquo; Comments Feed" href="http://www.liblognorm.com/comments/feed/" />
-<link rel='stylesheet' id='contact-form-7-css'  href='http://www.liblognorm.com/wp-content/plugins/contact-form-7/includes/css/styles.css?ver=3.3.3' type='text/css' media='all' />
-<script type='text/javascript' src='http://www.liblognorm.com/wp-includes/js/jquery/jquery.js?ver=1.8.3'></script>
-<link rel="EditURI" type="application/rsd+xml" title="RSD" href="http://www.liblognorm.com/xmlrpc.php?rsd" />
-<link rel="wlwmanifest" type="application/wlwmanifest+xml" href="http://www.liblognorm.com/wp-includes/wlwmanifest.xml" />
-<meta name="generator" content="WordPress 3.5.1"
-"""
 
 RESPONSE_HTTP_VERSION_SLOT = 'RESPONSE_HTTP_VERSION'
 RESPONSE_CODE_SLOT = 'RESPONSE_CODE'
@@ -160,20 +126,6 @@ class WhenParsingResponses(unittest.TestCase):
         parser = HttpEventParser(tracker, RESPONSE_PARSER)
 
         chunk_message(CHUNKED_RESPONSE, parser)
-
-        tracker.validate_hits({
-            RESPONSE_HTTP_VERSION_SLOT: 1,
-            RESPONSE_CODE_SLOT: 1,
-            HEADER_FIELD_SLOT: 1,
-            HEADER_VALUE_SLOT: 1,
-            BODY_SLOT: 4,
-            BODY_COMPLETE_SLOT: 1}, self)
-
-    def test_magic(self):
-        tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker, RESPONSE_PARSER)
-
-        chunk_message(REAL_RESPONSE, parser)
 
         tracker.validate_hits({
             RESPONSE_HTTP_VERSION_SLOT: 1,
