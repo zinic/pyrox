@@ -49,23 +49,20 @@ class HttpFilterChain(object):
         for http_filter in self.chain:
             action_list = http_filter.on_header(field, value)
             if action_list and len(action_list) > 0:
-                self._process_actions(message_control, action_list)
+                self._perform_actions(message_control, action_list)
                 if message_control.should_consume() or message_control.should_reject():
                         break
         return message_control
 
     def _perform_actions(self, message_control, actions):
-        message_control = PROXY_REQUEST
         for action in actions:
             if action.kind == ADD_HEADER and len(action.args) == 2:
-                """
-                Adding a header requires the name and value
-                """
+
+                #Adding a header requires the name and value
                 message_control.add_action(action)
             elif action.kind == REWRITE_HEADER and len(action.args) == 2:
-                """
-                Rewriting a header requires the name and value
-                """
+
+                #Rewriting a header requires the name and value
                 message_control.add_action(action)
             elif action.kind == CONSUME_EVENT:
                 message_control.control = CONSUME_EVENT
