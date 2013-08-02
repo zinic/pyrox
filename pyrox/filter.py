@@ -38,9 +38,8 @@ class FilterAction(object):
 
 class HttpFilterChain(object):
 
-    def __init__(self, stream):
+    def __init__(self):
         self.chain = list()
-        self.stream = stream
 
     def add_filter(self, http_filter):
         self.chain.append(http_filter)
