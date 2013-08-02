@@ -8,11 +8,12 @@ import tornado.process
 import tornado.iostream as iostream
 import tornado.tcpserver as tcpserver
 
-from pyrox.http_filter import HttpRequestMessage, HttpResponseMessage, HttpHeader
+from pyrox.http_filter import (
+    HttpRequestMessage, HttpResponseMessage, HttpHeader)
 
 from pyrox.env import get_logger
-from pyrox.http import HttpEventParser, ParserDelegate, REQUEST_PARSER,\
-    RESPONSE_PARSER
+from pyrox.http import (
+    HttpEventParser, ParserDelegate, REQUEST_PARSER, RESPONSE_PARSER)
 
 
 _LOG = get_logger(__name__)

@@ -14,13 +14,13 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
         self.config = ConfigParser()
         self.config.read("/etc/pyrox/pyrox.conf")
 
-        self.username = self.config.get(_FTEST_CONFIG_KEY,'username')
-        self.password = self.config.get(_FTEST_CONFIG_KEY,'password')
-        self.tenant_name = self.config.get(_FTEST_CONFIG_KEY,'tenant_name')
-        self.auth_url = self.config.get(_FTEST_CONFIG_KEY,'auth_url')
+        self.username = self.config.get(_FTEST_CONFIG_KEY, 'username')
+        self.password = self.config.get(_FTEST_CONFIG_KEY, 'password')
+        self.tenant_name = self.config.get(_FTEST_CONFIG_KEY, 'tenant_name')
+        self.auth_url = self.config.get(_FTEST_CONFIG_KEY, 'auth_url')
 
-        self.host = self.config.get(_FTEST_CONFIG_KEY,'host')
-        self.tenant_id = self.config.get(_FTEST_CONFIG_KEY,'tenant_id')
+        self.host = self.config.get(_FTEST_CONFIG_KEY, 'host')
+        self.tenant_id = self.config.get(_FTEST_CONFIG_KEY, 'tenant_id')
 
     def test_meniscus_keystone_returns_proxy_action(self):
 
@@ -32,15 +32,14 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
                                  tenant_name=self.tenant_name,
                                  auth_url=self.auth_url)
         token = keystone.auth_token
-        print('TOKEN BRO: {}'.format(keystone.auth_token))
-        self.fail()
+
         auth_header = http_filter.HttpHeader(name="X-AUTH-TOKEN")
         auth_header.values.append(token)
         headers = {auth_header.name.lower(): auth_header}
 
         req_message = http_filter.HttpRequestMessage()
         req_message.url = url
-        req_message.method ='GET'
+        req_message.method = 'GET'
         req_message.version = "1.0"
         req_message.headers = headers
 
@@ -59,7 +58,7 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
 
         req_message = http_filter.HttpRequestMessage()
         req_message.url = url
-        req_message.method ='GET'
+        req_message.method = 'GET'
         req_message.version = "1.0"
         req_message.headers = headers
 
