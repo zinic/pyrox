@@ -9,5 +9,5 @@ def new_filter_chain():
 proxy = new_server(
     ('127.0.0.1', 8080),
     new_filter_chain,
-    downstream_target=('www.liblognorm.com', 80))
+    downstream_target=('localhost', 80))
 proxy.start_up()

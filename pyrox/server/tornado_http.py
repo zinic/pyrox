@@ -69,7 +69,8 @@ class UpstreamProxyHandler(ProxyHandler):
         self.downstream_host = downstream_host
 
     def on_req_method(self, method):
-        self.request.method = method
+        if method.lower() == 'get':
+            self.request.method = method
 
     def on_req_path(self, url):
         self.request.url = url
@@ -117,6 +118,9 @@ class DownstreamProxyHandler(ProxyHandler):
         super(DownstreamProxyHandler, self).__init__(filter_chain, upstream)
         self.upstream = upstream
         self.response = HttpResponseMessage()
+
+    def on_http_version(self, major, minor):
+        self.response.version = '{}.{}'.format(major, minor)
 
     def on_status(self, status_code):
         self.response.status_code = status_code
