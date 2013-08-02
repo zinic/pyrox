@@ -57,13 +57,13 @@ class HttpFilterChain(object):
     def _perform_actions(self, message_control, actions):
         for action in actions:
             if action.kind == ADD_HEADER and len(action.args) == 2:
-
                 #Adding a header requires the name and value
                 message_control.add_action(action)
-            elif action.kind == REWRITE_HEADER and len(action.args) == 2:
 
+            elif action.kind == REWRITE_HEADER and len(action.args) == 2:
                 #Rewriting a header requires the name and value
                 message_control.add_action(action)
+
             elif action.kind == CONSUME_EVENT:
                 message_control.control = CONSUME_EVENT
             elif action.kind == REJECT_REQUEST:
@@ -135,4 +135,7 @@ class FilterHandler(http.ParserDelegate):
 class HttpFilter(object):
 
     def on_header(self, field, values):
+        pass
+
+    def on_url(self, url):
         pass
