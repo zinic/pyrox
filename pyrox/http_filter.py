@@ -44,10 +44,20 @@ class HttpFilterChain(object):
     def add_filter(self, http_filter):
         self.chain.append(http_filter)
 
-    def on_header(self, field, value):
+    def on_request(self, request):
         message_control = MessageControl()
         for http_filter in self.chain:
-            action_list = http_filter.on_header(field, value)
+            action_list = http_filter.on_request(request)
+            if action_list and len(action_list) > 0:
+                self._perform_actions(message_control, action_list)
+                if message_control.should_consume() or message_control.should_reject():
+                        break
+        return message_control
+
+    def on_response(self, response):
+        message_control = MessageControl()
+        for http_filter in self.chain:
+            action_list = http_filter.on_response(response)
             if action_list and len(action_list) > 0:
                 self._perform_actions(message_control, action_list)
                 if message_control.should_consume() or message_control.should_reject():
@@ -156,28 +166,26 @@ class HttpRequestMessage(object):
     HttpRequestMessage defines the Http request attributes that
     will be available to a HttpFilter
     """
-    def __init__(self, url, method, version, headers=None ):
-        self.url = url
-        self.method = method
-        self.version = version
-        if headers is None:
-            self.headers = dict()
+    def __init__(self):
+        self.url = None
+        self.method = None
+        self.version = None
+        self.headers = dict()
 
 class HttpResponseMessage(object):
     """
     HttpResponseMessage defines the Http response attributes that
     will be available to a HttpFilter
     """
-    def __init__(self, status_code, version, headers=None):
-        self.status_code = status_code
-        self.version = version
-        if headers is None:
-            self.headers = dict()
+    def __init__(self):
+        self.status_code = None
+        self.version = None
+        self.headers = dict()
 
 class HttpHeader(object):
     """
     defines the fields for a Http header
     """
-    def __init__(self, name, value):
+    def __init__(self, name):
         self.name = name
-        self.value = value
+        self.values = list()
