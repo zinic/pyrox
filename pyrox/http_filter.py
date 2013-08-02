@@ -173,3 +173,11 @@ class HttpResponseMessage(object):
         self.version = version
         if headers is None:
             self.headers = dict()
+
+class HttpHeader(object):
+    """
+    defines the fields for a Http header
+    """
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
