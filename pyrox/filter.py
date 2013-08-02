@@ -134,8 +134,42 @@ class FilterHandler(http.ParserDelegate):
 
 class HttpFilter(object):
 
-    def on_header(self, field, values):
+    def on_request(self, request_message):
+        """
+        on_request will accept an HttpRequestMessage object and implement
+        the logic that will define the FilterActions to be applied
+        to the request
+        """
         pass
 
-    def on_url(self, url):
+    def on_response(self, response_message):
+        """
+        on_response will accept an HttpResponseMessage object and implement
+        the logic that will define the FilterActions to be applied
+        to the request
+        """
         pass
+
+
+class HttpRequestMessage(object):
+    """
+    HttpRequestMessage defines the Http request attributes that
+    will be available to a HttpFilter
+    """
+    def __init__(self, url, method, version, headers=None ):
+        self.url = url
+        self.method = method
+        self.version = version
+        if headers is None:
+            self.headers = dict()
+
+class HttpResponseMessage(object):
+    """
+    HttpResponseMessage defines the Http response attributes that
+    will be available to a HttpFilter
+    """
+    def __init__(self, status_code, version, headers=None):
+        self.status_code = status_code
+        self.version = version
+        if headers is None:
+            self.headers = dict()
