@@ -19,6 +19,7 @@ DEBUG = os.getenv('DEBUG')
 if DEBUG and DEBUG.lower() == 'true':
     COMPILER_ARGS.append('-D DEBUG_OUTPUT')
 
+
 def read(relative):
     contents = open(relative, 'r').read()
     return [l for l in contents.split('\n') if l != '']
@@ -69,7 +70,7 @@ ext_modules = package_c()
 setup(
     name='pyrox',
     version='0.0.1',
-    description='The high-speed HTTP middleware proxy for python',
+    description='The high-speed HTTP middleware proxy for Python',
     author='John Hopper',
     author_email='john.hopper@jpserver.net',
     url='https://github.com/zinic/pyrox',
