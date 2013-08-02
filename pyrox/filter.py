@@ -10,6 +10,25 @@ PROXY_REQUEST = 4
 REJECT_REQUEST = 5
 
 
+class MessageControl(object):
+    """
+    This class is returned to the control plane to aggregrate actions.
+    """
+
+    def __init__(self):
+        self.control = PROXY_REQUEST
+        self.message_actions = list()
+
+    def add_action(self, filter_action):
+        self.message_actions.append(filter_action)
+
+    def should_consume(self):
+        return self.control == CONSUME_EVENT
+
+    def should_reject(self):
+        return self.control == REJECT_REQUEST
+
+
 class FilterAction(object):
 
     def __init__(self, kind, *args):
@@ -27,30 +46,32 @@ class HttpFilterChain(object):
         self.chain.append(http_filter)
 
     def on_header(self, field, value):
-        request_control = PROXY_REQUEST
+        message_control = MessageControl()
         for http_filter in self.chain:
             action_list = http_filter.on_header(field, value)
             if action_list and len(action_list) > 0:
-                request_control = self._perform_actions(action_list)
-                if request_control and (request_control == REJECT_REQUEST or request_control == CONSUME_EVENT):
+                self._process_actions(message_control, action_list)
+                if message_control.should_consume() or message_control.should_reject():
                         break
-        return request_control
+        return message_control
 
-    def _perform_actions(self, current_header_field, actions):
-        request_control = None
+    def _perform_actions(self, message_control, actions):
+        request_control = PROXY_REQUEST
         for action in actions:
             if action.kind == ADD_HEADER and len(action.args) == 2:
-                self.stream.write(b'{}: {}\r\n'.format(
-                    action.args[0],
-                    action.args[1]))
-            elif action.kind == REWRITE_HEADER and len(action.args) == 1:
-                self.stream.write(b'{}: {}\r\n'.format(
-                    current_header_field,
-                    action.args[0]))
+                """
+                Adding a header requires the name and value
+                """
+                message_control.add_action(action)
+            elif action.kind == REWRITE_HEADER and len(action.args) == 2:
+                """
+                Rewriting a header requires the name and value
+                """
+                message_control.add_action(action)
             elif action.kind == CONSUME_EVENT:
-                request_control = CONSUME_EVENT
+                message_control.control = CONSUME_EVENT
             elif action.kind == REJECT_REQUEST:
-                request_control = REJECT_REQUEST
+                message_control.control = REJECT_REQUEST
         return request_control
 
 
