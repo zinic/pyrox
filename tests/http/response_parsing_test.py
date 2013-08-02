@@ -55,7 +55,8 @@ class TrackingDelegate(ParserDelegate):
             test.assertEquals(
                 expected[key],
                 self.hits[key],
-                'Failed on expected hits for key: {} - was {} expected {}'.format(key, self.hits[key], expected[key]))
+                'Failed on expected hits for key: {} - was {} expected {}'
+                .format(key, self.hits[key], expected[key]))
 
     def on_status(self, status_code):
         self.register_hit(RESPONSE_CODE_SLOT)
@@ -95,11 +96,11 @@ class ValidatingDelegate(ParserDelegate):
 
     def on_header_field(self, field):
         if field not in ['Transfer-Encoding', 'Content-Length', 'Connection']:
-            pass#raise Exception('Unexpected header field {}'.format(field))
+            pass  # raise Exception('Unexpected header field {}'.format(field))
 
     def on_header_value(self, value):
         if value not in ['keep-alive', 'chunked', '12']:
-            pass#raise Exception('Unexpected header value {}'.format(value))
+            pass  # raise Exception('Unexpected header value {}'.format(value))
 
     def on_body(self, data):
         print('got {}'.format(data))

@@ -23,4 +23,3 @@ proxy = new_server(
     #downstream_target=('localhost', 80))
     downstream_target=('coordination.dev.ord.projectmeniscus.org', 8080))
 proxy.start_up()
-

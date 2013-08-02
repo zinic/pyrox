@@ -3,12 +3,12 @@ import unittest
 from pyrox.http import HttpEventParser, ParserDelegate, REQUEST_PARSER
 
 UNEXPECTED_HEADER_REQUEST = \
-"""GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
-Test: test\r
-Connection: keep-alive\r
-Content-Length: 12\r\n
-\r
-This is test"""
+    """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
+    Test: test\r
+    Connection: keep-alive\r
+    Content-Length: 12\r\n
+    \r
+    This is test"""
 
 NORMAL_REQUEST = """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
 Connection: keep-alive\r
@@ -67,7 +67,8 @@ class TrackingDelegate(ParserDelegate):
             test.assertEquals(
                 expected[key],
                 self.hits[key],
-                'Failed on expected hits for key: {} - was {} expected {}'.format(key, self.hits[key], expected[key]))
+                'Failed on expected hits for key: {} - was {} expected {}'
+                .format(key, self.hits[key], expected[key]))
 
     def on_req_method(self, method):
         self.register_hit(REQUEST_METHOD_SLOT)

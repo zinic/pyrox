@@ -50,7 +50,8 @@ class HttpFilterChain(object):
             action = http_filter.on_request(request)
             if action:
                 self._handle_action(message_control, action)
-                if message_control.should_consume() or message_control.should_reject():
+                if (message_control.should_consume()
+                        or message_control.should_reject()):
                         break
         return message_control
 
@@ -60,7 +61,8 @@ class HttpFilterChain(object):
             action = http_filter.on_response(response)
             if action:
                 self._handle_action(message_control, action)
-                if message_control.should_consume() or message_control.should_reject():
+                if (message_control.should_consume()
+                        or message_control.should_reject()):
                         break
         return message_control
 
@@ -164,6 +166,7 @@ class HttpRequestMessage(object):
         self.version = None
         self.headers = dict()
 
+
 class HttpResponseMessage(object):
     """
     HttpResponseMessage defines the Http response attributes that
@@ -173,6 +176,7 @@ class HttpResponseMessage(object):
         self.status_code = None
         self.version = None
         self.headers = dict()
+
 
 class HttpHeader(object):
     """
