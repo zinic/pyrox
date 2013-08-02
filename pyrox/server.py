@@ -64,7 +64,7 @@ class ProxyHandler(ParserDelegate):
 
     def on_message_complete(self):
         if self.transfer_encoding_chunked:
-            self.stream.write(b'0\r\n')
+            self.stream.write(b'0\r\n\r\n')
 
 
 class UpstreamProxyHandler(ProxyHandler):

@@ -55,7 +55,7 @@ class HttpFilterChain(object):
         return message_control
 
     def _perform_actions(self, message_control, actions):
-        request_control = PROXY_REQUEST
+        message_control = PROXY_REQUEST
         for action in actions:
             if action.kind == ADD_HEADER and len(action.args) == 2:
                 """
@@ -71,7 +71,7 @@ class HttpFilterChain(object):
                 message_control.control = CONSUME_EVENT
             elif action.kind == REJECT_REQUEST:
                 message_control.control = REJECT_REQUEST
-        return request_control
+        return message_control
 
 
 class HttpMessageSelector(object):
