@@ -3,6 +3,8 @@ from __future__ import print_function
 import socket
 
 import tornado
+import tornado.ioloop
+import tornado.process
 import tornado.iostream as iostream
 import tornado.tcpserver as tcpserver
 
@@ -172,23 +174,15 @@ class ProxyConnection(object):
 
 class TornadoHttpProxy(tornado.tcpserver.TCPServer):
 
-    def __init__(self, address, downstream_target=None, io_loop=None):
-        super(TornadoHttpProxy, self).__init__(io_loop=io_loop)
-        self.io_loop = io_loop
-        self.address = address
+    def __init__(self, downstream_target=None):
+        super(TornadoHttpProxy, self).__init__()
         self.downstream_target = downstream_target
-
-    def start_up(self, processes=0):
-        # bind() args are port, address
-        self.bind(self.address[1], self.address[0])
-        super(TornadoHttpProxy, self).start(processes)
-        _LOG.info('TCP server running on: {0}:{1}',
-                  self.address[0], self.address[1])
-        self.ioloop.start()
 
     def handle_stream(self, upstream, address):
         ds_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-        downstream = tornado.iostream.IOStream(ds_sock, io_loop=self.io_loop2)
+        ds_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        ds_sock.setblocking(0)
+        downstream = tornado.iostream.IOStream(ds_sock)
 
         connection_handler = ProxyConnection(
             upstream,
@@ -200,6 +194,9 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
             connection_handler.on_downstream_connect)
 
 
-def new_server(address, downstream_target=None):
-    io_loop = tornado.ioloop.IOLoop()
-    return TornadoHttpProxy(address, downstream_target, io_loop)
+def new_server(address, processes=0, downstream_target=None):
+    tcp_proxy = TornadoHttpProxy(downstream_target)
+    tcp_proxy.bind(address=address[0], port=address[1])
+    tcp_proxy.start()
+    tornado.ioloop.IOLoop.instance().start()
+
