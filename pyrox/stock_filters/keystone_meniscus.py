@@ -3,6 +3,10 @@ from keystoneclient.v2_0 import client
 
 from pyrox.http.filtering import HttpFilter, reject, pass_event
 
+"""
+This is a very rough example of what an authentication function might look like
+"""
+
 _MENISCUS_CONFIG_KEY = 'keystone_meniscus'
 config = ConfigParser()
 config.read("/etc/pyrox/pyrox.conf")
