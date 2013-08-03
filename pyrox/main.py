@@ -10,6 +10,7 @@ from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
 
 args_parser = argparse.ArgumentParser(
+    prog='proxy',
     description='Pyrox, the fast Python HTTP middleware server.')
 args_parser.add_argument(
     '-d',
