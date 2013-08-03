@@ -13,9 +13,7 @@ in the case where the software is being installed as a pre-built package. For
 development use cases, installing cython is required.
 
 ```bash
-pip install -r tools/dev-requires
-pip install -r tools/pip-requires
-pip install -r tools/test-requires
+pip install -r tools/dev-requires -r tools/pip-requires -r tools/test-requires
 python setup.py build && python setup.py build_ext --inplace
 nosetests
 ```
