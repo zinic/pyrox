@@ -1,9 +1,10 @@
 # Pyrox
-The high-speed HTTP middleware proxy for python.
+The fast Python HTTP middleware server
 
 ## Features
-* Based on much of the code found in the [Joyent HTTP Parser](https://github.com/joyent/http-parser)
+* Fast HTTP parser written in C with much of the code based on the [Joyent HTTP Parser](https://github.com/joyent/http-parser)
 * Utilizes [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
+* Low dependency footprint
 
 ## Building Pyrox
 
