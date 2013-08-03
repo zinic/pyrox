@@ -1,4 +1,4 @@
-from pyrox.http as import HttpResponse
+from pyrox.http import HttpResponse
 
 
 """
