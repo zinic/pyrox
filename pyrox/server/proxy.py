@@ -214,10 +214,3 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
             self.downstream_target,
             connection_handler.on_downstream_connect)
 
-
-def start_server(address, filter_chain_constructor, processes=0,
-                 downstream_target=None):
-    tcp_proxy = TornadoHttpProxy(filter_chain_constructor, downstream_target)
-    tcp_proxy.bind(address=address[0], port=address[1])
-    tcp_proxy.start(processes)
-    tornado.ioloop.IOLoop.instance().start()

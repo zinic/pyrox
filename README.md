@@ -14,6 +14,23 @@ python setup.py build && python setup.py build_ext --inplace
 nosetests
 ```
 
+## Running Pyrox
+```bash
+python pyrox/main.py
+```
+
+usage: main.py [-h] [-d [DOWNSTREAM_HOST]] [-b [BIND_HOST]] start
+
+Pyrox, the fast Python HTTP middleware server.
+
+positional arguments:
+  start                 Starts the daemon.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d [DOWNSTREAM_HOST]  Sets the downstream host to proxy to.
+  -b [BIND_HOST]        Sets the host to bind to and listen on.
+
 ##That Legal Thing...
 
 This software library is released to you under the [MIT License](http://opensource.org/licenses/MIT). See [LICENSE](https://github.com/zinic/pyrox/blob/master/LICENSE) for more information.
