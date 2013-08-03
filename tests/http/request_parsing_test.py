@@ -1,6 +1,6 @@
 import unittest
 
-from pyrox.http import HttpEventParser, ParserDelegate, REQUEST_PARSER
+from pyrox.http import RequestParser, ParserDelegate
 
 UNEXPECTED_HEADER_REQUEST = \
     """GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
@@ -129,7 +129,7 @@ class WhenParsingRequests(unittest.TestCase):
 
     def test_reading_request_with_content_length(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker)
+        parser = RequestParser(tracker)
 
         chunk_message(NORMAL_REQUEST, parser)
 
@@ -144,14 +144,14 @@ class WhenParsingRequests(unittest.TestCase):
 
     def test_exception_propagation(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker)
+        parser = RequestParser(tracker)
 
         with self.assertRaises(Exception):
             chunk_message(UNEXPECTED_HEADER_REQUEST, parser)
 
     def test_reading_chunked_request(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker)
+        parser = RequestParser(tracker)
 
         chunk_message(CHUNKED_REQUEST, parser)
 

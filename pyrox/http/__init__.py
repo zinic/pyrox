@@ -1,2 +1,2 @@
-from .parser import (HttpEventParser, ParserDelegate, REQUEST_PARSER,
-                     RESPONSE_PARSER)
+from .parser import RequestParser, ResponseParser, ParserDelegate
+from .model import HttpHeader, HttpMessage, HttpRequest, HttpResponse

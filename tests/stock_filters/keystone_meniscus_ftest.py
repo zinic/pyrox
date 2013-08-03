@@ -32,12 +32,13 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
                                  tenant_name=self.tenant_name,
                                  auth_url=self.auth_url)
         token = keystone.auth_token
-
+        print('DAT TOKEN YO: {}'.format(token))
+        self.fail()
         auth_header = http_filter.HttpHeader(name="X-AUTH-TOKEN")
         auth_header.values.append(token)
         headers = {auth_header.name.lower(): auth_header}
 
-        req_message = http_filter.HttpRequestMessage()
+        req_message = http_filter.HttpRequest()
         req_message.url = url
         req_message.method = 'GET'
         req_message.version = "1.0"
@@ -56,7 +57,7 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
         auth_header.values.append('BAD_TOKEN')
         headers = {auth_header.name.lower(): auth_header}
 
-        req_message = http_filter.HttpRequestMessage()
+        req_message = http_filter.HttpRequest()
         req_message.url = url
         req_message.method = 'GET'
         req_message.version = "1.0"

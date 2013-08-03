@@ -1,5 +1,6 @@
 import unittest
-from pyrox.http import HttpEventParser, ParserDelegate, RESPONSE_PARSER
+
+from pyrox.http import ResponseParser, ParserDelegate
 
 NORMAL_RESPONSE = """HTTP/1.1 200 OK\r
 Content-Length: 12\r\n
@@ -110,7 +111,7 @@ class WhenParsingResponses(unittest.TestCase):
 
     def test_reading_request_with_content_length(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker, RESPONSE_PARSER)
+        parser = ResponseParser(tracker)
 
         chunk_message(NORMAL_RESPONSE, parser)
 
@@ -124,7 +125,7 @@ class WhenParsingResponses(unittest.TestCase):
 
     def test_reading_chunked_request(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
-        parser = HttpEventParser(tracker, RESPONSE_PARSER)
+        parser = ResponseParser(tracker)
 
         chunk_message(CHUNKED_RESPONSE, parser)
 

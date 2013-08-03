@@ -1,11 +1,15 @@
 from libc.stdlib cimport malloc, free
 from cpython cimport bool, PyBytes_FromStringAndSize, PyBytes_FromString
 
-import traceback
 
+_REQUEST_PARSER = 0
+_RESPONSE_PARSER = 1
 
-REQUEST_PARSER = 0
-RESPONSE_PARSER = 1
+def RequestParser(parser_delegate):
+    return HttpEventParser(parser_delegate, _REQUEST_PARSER)
+
+def ResponseParser(parser_delegate):
+    return HttpEventParser(parser_delegate, _RESPONSE_PARSER)
 
 
 cdef int on_req_method(http_parser *parser, char *data, size_t length):
@@ -143,13 +147,13 @@ cdef class HttpEventParser(object):
     def __cinit__(self):
         self._parser = <http_parser *> malloc(sizeof(http_parser))
 
-    def __init__(self, object delegate, kind=REQUEST_PARSER):
+    def __init__(self, object delegate, kind=_REQUEST_PARSER):
         self.app_data = ParserData(delegate)
 
         # set parser type
-        if kind == REQUEST_PARSER:
+        if kind == _REQUEST_PARSER:
             parser_type = HTTP_REQUEST
-        elif kind == RESPONSE_PARSER:
+        elif kind == _RESPONSE_PARSER:
             parser_type = HTTP_RESPONSE
         else:
             raise Exception('Kind must be 0 for requests or 1 for responses')
@@ -180,7 +184,6 @@ cdef class HttpEventParser(object):
             self._parser, &self._settings, data, length)
         if retval:
             if self.app_data.exception:
-                traceback.print_exc(self.app_data.exception)
                 raise self.app_data.exception
             else:
                 raise Exception('Failed with errno: {}'.format(retval))
