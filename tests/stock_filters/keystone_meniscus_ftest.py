@@ -1,9 +1,9 @@
 from ConfigParser import ConfigParser
 import unittest
+import pyrox.http as http
+import pyrox.http.filtering as http_filtering
 
 from keystoneclient.v2_0 import client
-
-from pyrox import http_filter
 from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
 
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
@@ -32,40 +32,35 @@ class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
                                  tenant_name=self.tenant_name,
                                  auth_url=self.auth_url)
         token = keystone.auth_token
-        print('DAT TOKEN YO: {}'.format(token))
-        self.fail()
-        auth_header = http_filter.HttpHeader(name="X-AUTH-TOKEN")
-        auth_header.values.append(token)
-        headers = {auth_header.name.lower(): auth_header}
 
-        req_message = http_filter.HttpRequest()
+        req_message = http.HttpRequest()
         req_message.url = url
         req_message.method = 'GET'
         req_message.version = "1.0"
-        req_message.headers = headers
+
+        auth_header = req_message.header(name="X-AUTH-TOKEN")
+        auth_header.values.append(token)
 
         meniscus_filter = MeniscusKeystoneFilter()
         returned_action = meniscus_filter.on_request(req_message)
-        self.assertEqual(returned_action.kind, http_filter.PROXY_REQUEST)
+        self.assertEqual(returned_action.kind, http_filtering.NEXT_FILTER)
 
     def test_meniscus_keystone_returns_reject_action(self):
 
         url = "http://{host}:8080/v1/tenant/{tenant_id}".format(
             host=self.host, tenant_id=self.tenant_id)
 
-        auth_header = http_filter.HttpHeader(name="X-AUTH-TOKEN")
-        auth_header.values.append('BAD_TOKEN')
-        headers = {auth_header.name.lower(): auth_header}
-
-        req_message = http_filter.HttpRequest()
+        req_message = http.HttpRequest()
         req_message.url = url
         req_message.method = 'GET'
         req_message.version = "1.0"
-        req_message.headers = headers
+
+        auth_header = req_message.header(name="X-AUTH-TOKEN")
+        auth_header.values.append('BAD_TOKEN')
 
         meniscus_filter = MeniscusKeystoneFilter()
         returned_action = meniscus_filter.on_request(req_message)
-        self.assertEqual(returned_action.kind, http_filter.REJECT_REQUEST)
+        self.assertEqual(returned_action.kind, http_filtering.REJECT)
 
 
 if __name__ == '__main__':

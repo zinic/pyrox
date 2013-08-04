@@ -103,7 +103,7 @@ _DEFAULT_REJECT_RESP.header('Content-Length').values.append('0')
 """
 Default filter action singletons.
 """
-_DEFAULT_PASS_ACTION = FilterAction()
+_DEFAULT_PASS_ACTION = FilterAction(NEXT_FILTER)
 _DEFAULT_CONSUME_ACTION = FilterAction(CONSUME)
 
 
