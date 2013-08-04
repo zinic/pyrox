@@ -1,3 +1,6 @@
+_EMPTY_HEADER_VALUES = ()
+
+
 class HttpHeader(object):
     """
     Defines the fields for a HTTP header
@@ -14,22 +17,45 @@ class HttpMessage(object):
     """
     def __init__(self):
         self.version = None
-        self.headers = dict()
+        self._headers = dict()
 
-    def add_header(self, name, *values):
+    @property
+    def headers(self):
+        return self._headers
+
+    def header(self, name):
+        """
+        Returns the header that matches the name via case-insensitive matching.
+        If the header does not exist, a new header is created, attached to the
+        message and returned. If the header already exists, then it is returned.
+        """
         lower_name = name.lower()
-        if lower_name in self.headers:
-            header = self.headers[lower_name]
-        else:
+        header = self._headers.get(lower_name, None)
+        if not header:
             header = HttpHeader(name)
-            self.headers[lower_name] = header
-        for value in values:
-            header.values.append(value)
+            self._headers[lower_name] = header
+        return header
+
+    def get_header(self, name):
+        """
+        Returns the header that matches the name via case-insensitive matching.
+        Unlike the header function, if the header does not exist then a None
+        result is returned.
+        """
+        lower_name = name.lower()
+        return self._headers.get(lower_name, None)
 
     def remove_header(self, name):
+        """
+        Removes the header that matches the name via case-insensitive matching.
+        If the header exists, it is removed and a result of True is returned.
+        If the header does not exist then a result of False is returned.
+        """
         lower_name = name.lower()
-        if lower_name in self.headers:
-            del self.headers[lower_name]
+        if lower_name in self._headers:
+            del self._headers[lower_name]
+            return True
+        return False
 
 
 class HttpRequest(HttpMessage):
@@ -39,8 +65,8 @@ class HttpRequest(HttpMessage):
     """
     def __init__(self):
         super(HttpRequest, self).__init__()
-        self.url = None
         self.method = None
+        self.url = None
 
 
 class HttpResponse(HttpMessage):
@@ -51,4 +77,3 @@ class HttpResponse(HttpMessage):
     def __init__(self):
         super(HttpResponse, self).__init__()
         self.status_code = None
-        self.headers = dict()

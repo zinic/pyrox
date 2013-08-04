@@ -89,12 +89,13 @@ class UpstreamProxyHandler(ProxyHandler):
 
         # Special case for host
         if lower_name == 'host':
-            self.request.add_header(
-                self.current_header_field, self.downstream_host)
+            header = self.request.header(self.current_header_field)
+            header.values.append(self.downstream_host)
         elif lower_name == 'transfer-encoding' and value.lower() == 'chunked':
             self.transfer_encoding_chunked = True
         else:
-            self.request.add_header(self.current_header_field, value)
+            header = self.request.header(self.current_header_field)
+            header.values.append(value)
 
     def on_headers_complete(self):
         action = self.filter_chain.on_request(self.request)
@@ -130,7 +131,8 @@ class DownstreamProxyHandler(ProxyHandler):
         # Special case for transfer-encoding
         if lower_name == 'transfer-encoding' and value.lower() == 'chunked':
             self.transfer_encoding_chunked = True
-        self.response.add_header(self.current_header_field, value)
+        header = self.response.header(self.current_header_field)
+        header.values.append(value)
 
     def on_headers_complete(self):
         action = self.filter_chain.on_response(self.response)
