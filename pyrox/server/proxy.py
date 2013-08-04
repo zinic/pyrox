@@ -215,4 +215,3 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
         downstream.connect(
             self.downstream_target,
             connection_handler.on_downstream_connect)
-

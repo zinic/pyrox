@@ -12,6 +12,7 @@ def stop(signum, frame):
     _LOG.debug('Stop called at frame:\n{}'.format(str(frame)))
     IOLoop.instance().stop()
 
+
 def start(bind_address, downstream_host, fc_factory, processes=0):
     http_proxy = TornadoHttpProxy(fc_factory, downstream_host)
     http_proxy.bind(address=bind_address[0], port=bind_address[1])
@@ -21,4 +22,3 @@ def start(bind_address, downstream_host, fc_factory, processes=0):
 # Take over SIGTERM and SIGINT
 signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
-

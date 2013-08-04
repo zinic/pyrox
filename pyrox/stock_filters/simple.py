@@ -1,5 +1,6 @@
 from pyrox.http.filtering import HttpFilter, reject, pass_event
 
+
 class SimpleFilter(HttpFilter):
 
     def on_request(self, request_message):

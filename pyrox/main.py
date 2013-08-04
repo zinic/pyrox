@@ -61,4 +61,3 @@ if len(sys.argv) > 1:
         start(args)
 else:
     args_parser.print_help()
-

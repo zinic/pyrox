@@ -27,7 +27,8 @@ class HttpMessage(object):
         """
         Returns the header that matches the name via case-insensitive matching.
         If the header does not exist, a new header is created, attached to the
-        message and returned. If the header already exists, then it is returned.
+        message and returned. If the header already exists, then it is
+        returned.
         """
         lower_name = name.lower()
         header = self._headers.get(lower_name, None)
