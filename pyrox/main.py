@@ -1,10 +1,9 @@
 import sys
 import argparse
 
-import pyrox.env as env
 import pyrox.server as server
 
-from pyrox.http_filter import HttpFilterChain
+from pyrox.http.filtering import HttpFilterChain
 from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
 
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
@@ -35,12 +34,14 @@ def new_filter_chain():
     chain.add_filter(MeniscusKeystoneFilter())
     return chain
 
+
 def parse_host_arg(host):
     if ':' in host:
         split_host = host.split(':')
         return (split_host[0], int(split_host[1]))
     else:
         return (host, 80)
+
 
 def start(args):
     downstream_addr = parse_host_arg(args.downstream_host)
