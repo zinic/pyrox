@@ -5,7 +5,6 @@ import argparse
 import pyrox.server as server
 
 from pyrox.http.filtering import HttpFilterChain
-from pyrox.stock_filters.simple import SimpleFilter
 from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
 
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
