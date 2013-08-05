@@ -20,22 +20,28 @@ def commit_message_headers(stream, headers):
             # Header has no values, continue to the next one
             continue
 
-        # TODO:Review - Examine the cost of using format like this
-        stream.write(b'{}: '.format(header.name))
-        stream.write(b'{}'.format(header.values[0]))
+        stream.write(header.name)
+        stream.write(b': ')
+        stream.write(header.values[0])
 
         # Write other headers if they're there
         if len(header.values) > 1:
-            for header_value in header.values[1:]:
-                stream.write(b', {} '.format(header.name))
+            for value in header.values[1:]:
+                stream.write(b', ')
+                stream.write(value)
         stream.write(b'\r\n')
     stream.write(b'\r\n')
 
 
 def write_response_head_to_stream(stream, response):
-    stream.write(b'HTTP/{} {} -\r\n'.format(
-        response.version,
-        response.status_code))
+    stream.write(b'HTTP/')
+    stream.write(response.version)
+    stream.write(' ')
+    if isinstance(response.status_code, int):
+        stream.write(str(response.status_code))
+    else:
+        stream.write(response.status_code)
+    stream.write(' -\r\n')
     commit_message_headers(stream, response.headers)
 
 
@@ -46,13 +52,14 @@ class ProxyHandler(ParserDelegate):
         self.current_header_field = None
         self.body_stream = body_stream
         self.transfer_encoding_chunked = False
+        self.should_close = False
 
     def on_header_field(self, field):
         self.current_header_field = field
 
     def on_body(self, bytes):
         if self.transfer_encoding_chunked:
-            hex_len = hex(len(bytes))[2:].upper()
+            hex_len = hex(len(bytes))[2:]
             self.body_stream.write(hex_len)
             self.body_stream.write(b'\r\n')
             self.body_stream.write(bytes)
@@ -105,10 +112,12 @@ class UpstreamProxyHandler(ProxyHandler):
             self._commit_request_head_downstream()
 
     def _commit_request_head_downstream(self):
-        self.downstream.write(b'{} {} HTTP/{}\r\n'.format(
-            self.request.method,
-            self.request.url,
-            self.request.version))
+        self.downstream.write(self.request.method)
+        self.downstream.write(' ')
+        self.downstream.write(self.request.url)
+        self.downstream.write(' HTTP/')
+        self.downstream.write(self.request.version)
+        self.downstream.write('\r\n')
         commit_message_headers(self.downstream, self.request.headers)
 
 
@@ -123,7 +132,7 @@ class DownstreamProxyHandler(ProxyHandler):
         self.response.version = '{}.{}'.format(major, minor)
 
     def on_status(self, status_code):
-        self.response.status_code = status_code
+        self.response.status_code = str(status_code)
 
     def on_header_value(self, value):
         # Change the name to lowercase for comparasion
@@ -142,9 +151,11 @@ class DownstreamProxyHandler(ProxyHandler):
             self._commit_response_head_upstream()
 
     def _commit_response_head_upstream(self):
-        self.upstream.write(b'HTTP/{} {} -\r\n'.format(
-            self.response.version,
-            self.response.status_code))
+        self.upstream.write(b'HTTP/')
+        self.upstream.write(self.response.version)
+        self.upstream.write(' ')
+        self.upstream.write(self.response.status_code)
+        self.upstream.write(' -\r\n')
         commit_message_headers(self.upstream, self.response.headers)
 
 
@@ -184,13 +195,13 @@ class ProxyConnection(object):
         try:
             self.upstream_parser.execute(data, len(data))
         except Exception as ex:
-            raise ex
+            _LOG.exception(ex)
 
     def _on_downstream_read(self, data):
         try:
             self.downstream_parser.execute(data, len(data))
         except Exception as ex:
-            raise ex
+            _LOG.exception(ex)
 
 
 class TornadoHttpProxy(tornado.tcpserver.TCPServer):

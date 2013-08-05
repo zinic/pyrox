@@ -10,9 +10,9 @@ cdef extern from "http_el.h":
         short http_minor
         short status_code
 
-    ctypedef int (*http_body_cb) (http_parser*, char *at, size_t offset, size_t length)
-    ctypedef int (*http_data_cb) (http_parser*, char *at, size_t length)
-    ctypedef int (*http_cb) (http_parser*)
+    ctypedef int (*http_body_cb) (http_parser*, char *at, size_t offset, size_t length) except -1
+    ctypedef int (*http_data_cb) (http_parser*, char *at, size_t length) except -1
+    ctypedef int (*http_cb) (http_parser*) except -1
 
     struct http_parser_settings:
         http_data_cb      on_req_method
@@ -28,6 +28,6 @@ cdef extern from "http_el.h":
     void http_parser_init(http_parser *parser, http_parser_type ptype)
     void free_http_parser(http_parser *parser)
 
-    int http_parser_exec(http_parser *parser, http_parser_settings *settings, char *data, size_t len)
+    int http_parser_exec(http_parser *parser, http_parser_settings *settings, char *data, size_t len) except -1
     int http_should_keep_alive(http_parser *parser)
     int http_transfer_encoding_chunked(http_parser *parser)

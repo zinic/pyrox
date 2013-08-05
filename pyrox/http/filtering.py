@@ -15,6 +15,12 @@ class FilterAction(object):
     decided as the next course of action. Certain filter actions may include
     a resposne object for serialization out to the client in the case where
     the action enforces a rejection.
+
+    Attributes:
+        kind        An integer value representing the kind of action this
+                    object is intended to communicate.
+        response    A HttpResponse object to be rendered to the client when
+                    this action is consumed.
     """
     def __init__(self, kind=NEXT_FILTER, response=None):
         self.kind = kind
@@ -35,6 +41,11 @@ class HttpFilterChain(object):
     lifecycle of a client request. Each request is assigned a new copy of the
     chain, meaning that state may not be shared between requests during the
     lifetime of the filter chain or its filters.
+
+
+    Attributes:
+        chain       A list of HttpFilter objects organized to act as a pipeline
+                    with element 0 being the first to recieve events.
     """
     def __init__(self):
         self.chain = list()
@@ -97,6 +108,7 @@ class HttpFilter(object):
 Default return object. This should be configurable.
 """
 _DEFAULT_REJECT_RESP = HttpResponse()
+_DEFAULT_REJECT_RESP.version = b'1.1'
 _DEFAULT_REJECT_RESP.status_code = 400
 _DEFAULT_REJECT_RESP.header('Content-Length').values.append('0')
 

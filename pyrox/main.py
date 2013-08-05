@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 
@@ -25,6 +26,13 @@ args_parser.add_argument(
     default='127.0.0.1:8080',
     help='Sets the host to bind to and listen on.')
 args_parser.add_argument(
+    '-p',
+    nargs='?',
+    dest='plugin_paths',
+    default=None,
+    help=('"{}" character separated string of paths to '
+          'import from when loading plugins.'.format(os.sep)))
+args_parser.add_argument(
     'start',
     default=False,
     help='Starts the daemon.')
@@ -35,6 +43,10 @@ def new_filter_chain():
     #chain.add_filter(SimpleFilter())
     chain.add_filter(MeniscusKeystoneFilter())
     return chain
+
+
+def parse_args():
+    return args_parser.parse_args()
 
 
 def parse_host_arg(host):
@@ -56,7 +68,7 @@ def start(args):
 
 
 if len(sys.argv) > 1:
-    args = args_parser.parse_args()
+    args = parse_args()
     if args.start:
         start(args)
 else:

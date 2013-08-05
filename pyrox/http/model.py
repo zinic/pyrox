@@ -4,6 +4,10 @@ _EMPTY_HEADER_VALUES = ()
 class HttpHeader(object):
     """
     Defines the fields for a HTTP header
+
+    Attributes:
+        name        A bytearray or string value representing the field-name of
+                    the header.
     """
     def __init__(self, name):
         self.name = name
@@ -14,6 +18,10 @@ class HttpMessage(object):
     """
     Parent class for requests and responses. Many of the elements in the
     messages share common structures.
+
+    Attributes:
+        version     A bytearray or string value representing the major-minor
+                    version of the HttpMessage.
     """
     def __init__(self):
         self.version = None
@@ -61,8 +69,14 @@ class HttpMessage(object):
 
 class HttpRequest(HttpMessage):
     """
-    HttpRequest defines the HTTP request attributes that
-    will be available to a HttpFilter
+    HttpRequest defines the HTTP request attributes that will be available
+    to a HttpFilter.
+
+    Attributes:
+        method      A bytearray or string value representing the request's
+                    method verb.
+        url         A bytearray or string value representing the requests'
+                    uri path including the query and fragment string.
     """
     def __init__(self):
         super(HttpRequest, self).__init__()
@@ -72,8 +86,11 @@ class HttpRequest(HttpMessage):
 
 class HttpResponse(HttpMessage):
     """
-    HttpResponse defines the HTTP response attributes that
-    will be available to a HttpFilter
+    HttpResponse defines the HTTP response attributes that will be available
+    to a HttpFilter.
+
+    Attributes:
+        status_code      An integer representing the response's status code
     """
     def __init__(self):
         super(HttpResponse, self).__init__()
