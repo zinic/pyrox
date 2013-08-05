@@ -703,6 +703,8 @@ int read_header_field(http_parser *parser, const http_parser_settings *settings,
                 set_http_state(parser, s_chunk_size);
             } else if (parser->content_length > 0) {
                 set_http_state(parser, s_body);
+            } else {
+                set_http_state(parser, s_body_complete);
             }
             break;
 
@@ -736,7 +738,6 @@ int read_header_field_start(http_parser *parser, const http_parser_settings *set
             break;
 
         default:
-            set_header_state(parser, h_general);
             errno = read_header_field(parser, settings, next_byte, lower);
     }
 
@@ -891,6 +892,7 @@ int request_parser_exec(http_parser *parser, const http_parser_settings *setting
 
     for (d_index = 0; d_index < length; d_index++) {
         char next_byte = data[d_index];
+        printf("%c", next_byte);
 
         switch (parser->state) {
             case s_req_start:

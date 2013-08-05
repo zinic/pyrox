@@ -118,7 +118,6 @@ class UpstreamProxyHandler(ProxyHandler):
             write_request_head(self.downstream, self.request)
 
     def on_message_complete(self, is_chunked, should_keep_alive):
-
         if self.rejected:
             # Rejections do not stream the body - they discard it, therefore
             # we have to commit the head here.
