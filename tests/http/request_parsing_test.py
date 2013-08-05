@@ -90,11 +90,12 @@ class TrackingDelegate(ParserDelegate):
         self.register_hit(HEADER_VALUE_SLOT)
         self.delegate.on_header_value(value)
 
-    def on_body(self, data):
+    def on_body(self, data, is_chunked):
         self.register_hit(BODY_SLOT)
-        self.delegate.on_body(data)
+        print('Body get: {}'.format(data))
+        self.delegate.on_body(data, is_chunked)
 
-    def on_message_complete(self):
+    def on_message_complete(self, is_chunked, should_keep_alive):
         self.register_hit(BODY_COMPLETE_SLOT)
 
 
@@ -120,9 +121,6 @@ class ValidatingDelegate(ParserDelegate):
     def on_header_value(self, value):
         if value not in ['keep-alive', 'chunked', '12']:
             self.test.fail('Unexpected header value {}'.format(value))
-
-    def on_body(self, data):
-        print('got {}'.format(data))
 
 
 class WhenParsingRequests(unittest.TestCase):

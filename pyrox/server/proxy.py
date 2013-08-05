@@ -14,7 +14,7 @@ from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
 _LOG = get_logger(__name__)
 
 
-def commit_message_headers(stream, headers):
+def write_message_headers(stream, headers, callback=None):
     for header_key, header in headers.items():
         if len(header.values) == 0:
             # Header has no values, continue to the next one
@@ -30,10 +30,20 @@ def commit_message_headers(stream, headers):
                 stream.write(b', ')
                 stream.write(value)
         stream.write(b'\r\n')
-    stream.write(b'\r\n')
+    stream.write(b'\r\n', callback=callback)
 
 
-def write_response_head_to_stream(stream, response):
+def write_request_head(stream, request, callback=None):
+    stream.write(request.method)
+    stream.write(' ')
+    stream.write(request.url)
+    stream.write(' HTTP/')
+    stream.write(request.version)
+    stream.write('\r\n')
+    write_message_headers(stream, request.headers, callback)
+
+
+def write_response_head(stream, response, callback=None):
     stream.write(b'HTTP/')
     stream.write(response.version)
     stream.write(' ')
@@ -42,34 +52,31 @@ def write_response_head_to_stream(stream, response):
     else:
         stream.write(response.status_code)
     stream.write(' -\r\n')
-    commit_message_headers(stream, response.headers)
+    write_message_headers(stream, response.headers, callback)
 
 
 class ProxyHandler(ParserDelegate):
 
-    def __init__(self, filter_chain, body_stream):
+    def __init__(self, filter_chain, stream):
         self.filter_chain = filter_chain
         self.current_header_field = None
-        self.body_stream = body_stream
-        self.transfer_encoding_chunked = False
-        self.should_close = False
+        self.rejected = False
+        self.response = HttpResponse()
+        self.stream = stream
 
     def on_header_field(self, field):
         self.current_header_field = field
 
-    def on_body(self, bytes):
-        if self.transfer_encoding_chunked:
-            hex_len = hex(len(bytes))[2:]
-            self.body_stream.write(hex_len)
-            self.body_stream.write(b'\r\n')
-            self.body_stream.write(bytes)
-            self.body_stream.write(b'\r\n')
-        else:
-            self.body_stream.write(bytes)
-
-    def on_message_complete(self):
-        if self.transfer_encoding_chunked:
-            self.body_stream.write(b'0\r\n\r\n')
+    def on_body(self, bytes, is_chunked):
+        if not self.rejected:
+            if is_chunked:
+                hex_len = hex(len(bytes))[2:]
+                self.stream.write(hex_len)
+                self.stream.write(b'\r\n')
+                self.stream.write(bytes)
+                self.stream.write(b'\r\n')
+            else:
+                self.stream.write(bytes)
 
 
 class UpstreamProxyHandler(ProxyHandler):
@@ -98,8 +105,6 @@ class UpstreamProxyHandler(ProxyHandler):
         if lower_name == 'host':
             header = self.request.header(self.current_header_field)
             header.values.append(self.downstream_host)
-        elif lower_name == 'transfer-encoding' and value.lower() == 'chunked':
-            self.transfer_encoding_chunked = True
         else:
             header = self.request.header(self.current_header_field)
             header.values.append(value)
@@ -107,26 +112,38 @@ class UpstreamProxyHandler(ProxyHandler):
     def on_headers_complete(self):
         action = self.filter_chain.on_request(self.request)
         if action.is_rejecting():
-            write_response_head_to_stream(self.upstream, action.response)
+            self.rejected = True
+            self.response = action.response
         else:
-            self._commit_request_head_downstream()
+            write_request_head(self.downstream, self.request)
 
-    def _commit_request_head_downstream(self):
-        self.downstream.write(self.request.method)
-        self.downstream.write(' ')
-        self.downstream.write(self.request.url)
-        self.downstream.write(' HTTP/')
-        self.downstream.write(self.request.version)
-        self.downstream.write('\r\n')
-        commit_message_headers(self.downstream, self.request.headers)
+    def on_message_complete(self, is_chunked, should_keep_alive):
+
+        if self.rejected:
+            # Rejections do not stream the body - they discard it, therefore
+            # we have to commit the head here.
+            if should_keep_alive != 0:
+                write_response_head(
+                    stream=self.upstream,
+                    response=self.response,
+                    callback=self.downstream.close())
+            else:
+                print('here')
+                write_response_head(
+                    stream=self.upstream,
+                    response=self.response)
+        else:
+            if is_chunked == 0:
+                # Finish the last chunk.
+                self.downstream.write(b'0\r\n\r\n')
 
 
 class DownstreamProxyHandler(ProxyHandler):
 
-    def __init__(self, filter_chain, upstream):
+    def __init__(self, filter_chain, upstream, downstream):
         super(DownstreamProxyHandler, self).__init__(filter_chain, upstream)
         self.upstream = upstream
-        self.response = HttpResponse()
+        self.downstream = downstream
 
     def on_http_version(self, major, minor):
         self.response.version = '{}.{}'.format(major, minor)
@@ -137,26 +154,39 @@ class DownstreamProxyHandler(ProxyHandler):
     def on_header_value(self, value):
         # Change the name to lowercase for comparasion
         lower_name = self.current_header_field.lower()
-        # Special case for transfer-encoding
-        if lower_name == 'transfer-encoding' and value.lower() == 'chunked':
-            self.transfer_encoding_chunked = True
-        header = self.response.header(self.current_header_field)
-        header.values.append(value)
+        self.response.header(self.current_header_field).values.append(value)
 
     def on_headers_complete(self):
         action = self.filter_chain.on_response(self.response)
         if action.is_rejecting():
-            write_response_head_to_stream(self.upstream, action.response)
+            self.rejected = True
+            self.response = action.response
         else:
-            self._commit_response_head_upstream()
+            write_response_head(self.upstream, self.response)
 
-    def _commit_response_head_upstream(self):
-        self.upstream.write(b'HTTP/')
-        self.upstream.write(self.response.version)
-        self.upstream.write(' ')
-        self.upstream.write(self.response.status_code)
-        self.upstream.write(' -\r\n')
-        commit_message_headers(self.upstream, self.response.headers)
+    def on_message_complete(self, is_chunked, should_keep_alive):
+        if self.rejected:
+            # Rejections do not stream the body - they discard it, therefore
+            # we have to commit the head here.
+            if should_keep_alive != 0:
+                write_response_head(
+                    stream=self.upstream,
+                    response=self.response,
+                    callback=self.downstream.close())
+            else:
+                write_response_head(
+                    stream=self.upstream,
+                    response=self.response)
+        else:
+            if is_chunked == 0:
+                if should_keep_alive != 0:
+                    # Finish the last chunk.
+                    self.upstream.write(
+                        b'0\r\n\r\n',
+                        callback=self.downstream.close)
+                else:
+                    self.upstream.write(b'0\r\n\r\n')
+
 
 
 class ProxyConnection(object):
@@ -167,7 +197,7 @@ class ProxyConnection(object):
         self.upstream_handler = UpstreamProxyHandler(
             filter_chain, upstream, downstream, downstream_host)
         self.downstream_handler = DownstreamProxyHandler(
-            filter_chain, upstream)
+            filter_chain, upstream, downstream)
         self.upstream_parser = RequestParser(self.upstream_handler)
         self.downstream_parser = ResponseParser(self.downstream_handler)
 
@@ -184,12 +214,12 @@ class ProxyConnection(object):
             streaming_callback=self._on_downstream_read)
 
     def _on_upstream_close(self):
-        #print('Upstream closed')
-        pass
+        if not self.downstream.closed():
+            self.downstream.close()
 
     def _on_downstream_close(self):
-        #print('Downstream closed')
-        pass
+        if not self.upstream.closed():
+            self.upstream.close()
 
     def _on_upstream_read(self, data):
         try:

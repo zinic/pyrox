@@ -55,12 +55,16 @@ cdef int on_headers_complete(http_parser *parser) except -1:
 cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) except -1:
     cdef object app_data = <object> parser.app_data
     cdef object body_value = PyBytes_FromStringAndSize(data + offset, length)
-    app_data.delegate.on_body(body_value)
+    app_data.delegate.on_body(
+        body_value,
+        http_transfer_encoding_chunked(parser))
     return 0
 
 cdef int on_message_complete(http_parser *parser) except -1:
     cdef object app_data = <object> parser.app_data
-    app_data.delegate.on_message_complete()
+    app_data.delegate.on_message_complete(
+        http_transfer_encoding_chunked(parser),
+        http_should_keep_alive(parser))
     return 0
 
 
@@ -87,19 +91,18 @@ class ParserDelegate(object):
     def on_headers_complete(self):
         pass
 
-    def on_body(self, bytes):
+    def on_body(self, bytes, is_chunked):
         pass
 
-    def on_message_complete(self):
+    def on_message_complete(self, is_chunked, should_keep_alive):
         pass
 
 
 cdef class ParserData(object):
 
     cdef public object delegate
-    cdef public object exception
 
-    def __init__(self, delegate):
+    def __init__(self, object delegate):
         self.delegate = delegate
 
 
@@ -113,8 +116,6 @@ cdef class HttpEventParser(object):
         self._parser = <http_parser *> malloc(sizeof(http_parser))
 
     def __init__(self, object delegate, kind=_REQUEST_PARSER):
-        self.app_data = ParserData(delegate)
-
         # set parser type
         if kind == _REQUEST_PARSER:
             parser_type = HTTP_REQUEST
@@ -124,8 +125,9 @@ cdef class HttpEventParser(object):
             raise Exception('Kind must be 0 for requests or 1 for responses')
 
         # initialize parser
-        self._parser.app_data = <void *>self.app_data
+        self.app_data = ParserData(delegate)
         http_parser_init(self._parser, parser_type)
+        self._parser.app_data = <void *>self.app_data
 
         # set callbacks
         self._settings.on_req_method = <http_data_cb>on_req_method
@@ -140,9 +142,6 @@ cdef class HttpEventParser(object):
 
     def __dealloc__(self):
         free_http_parser(self._parser)
-
-    def is_chunked(self):
-        return http_transfer_encoding_chunked(self._parser)
 
     def execute(self, char *data, size_t length):
         cdef int retval

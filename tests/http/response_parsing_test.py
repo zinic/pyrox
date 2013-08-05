@@ -75,11 +75,11 @@ class TrackingDelegate(ParserDelegate):
         self.register_hit(HEADER_VALUE_SLOT)
         self.delegate.on_header_value(value)
 
-    def on_body(self, data):
+    def on_body(self, data, is_chunked):
         self.register_hit(BODY_SLOT)
         self.delegate.on_body(data)
 
-    def on_message_complete(self):
+    def on_message_complete(self, is_chunked, should_keep_alive):
         self.register_hit(BODY_COMPLETE_SLOT)
 
 

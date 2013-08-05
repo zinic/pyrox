@@ -352,14 +352,18 @@ char * http_header_state_name(header_state state) {
 
 void set_http_state(http_parser *parser, http_el_state state) {
 #if DEBUG_OUTPUT
-    printf("State changed --> %s\n", http_el_state_name(state));
+    printf("%s state changed --> %s\n",
+        parser->type == HTTP_REQUEST ? "Request" : "Response",
+        http_el_state_name(state));
 #endif
     parser->state = state;
 }
 
 void set_header_state(http_parser *parser, header_state state) {
 #if DEBUG_OUTPUT
-    printf("Header state changed --> %s\n", http_header_state_name(state));
+    printf("%s header state changed --> %s\n",
+        parser->type == HTTP_REQUEST ? "Request" : "Response",
+        http_header_state_name(state));
 #endif
     parser->header_state = state;
 }
@@ -379,23 +383,6 @@ void reset_http_parser(http_parser *parser) {
     set_http_state(
         parser,
         parser->type == HTTP_REQUEST ? s_req_start : s_resp_start);
-}
-
-int read_message_end(http_parser *parser, const http_parser_settings *settings, char next_byte) {
-    int errno = 0;
-
-    switch (next_byte) {
-        case CR:
-        case LF:
-            break;
-
-        default:
-            if (parser->type == HTTP_REQUEST) {
-            } else {
-            }
-    }
-
-    return errno;
 }
 
 int read_body(http_parser *parser, const http_parser_settings *settings, const char *data, size_t offset, size_t length) {
@@ -714,7 +701,7 @@ int read_header_field(http_parser *parser, const http_parser_settings *settings,
 
             if (parser->flags & F_CHUNKED) {
                 set_http_state(parser, s_chunk_size);
-            } else {
+            } else if (parser->content_length > 0) {
                 set_http_state(parser, s_body);
             }
             break;
