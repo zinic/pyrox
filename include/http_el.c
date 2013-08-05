@@ -728,20 +728,21 @@ int read_header_field_start(http_parser *parser, const http_parser_settings *set
         case 'c':
             // potentially connection or content-length
             errno = store_byte(next_byte, parser);
+            set_http_state(parser, s_header_field);
             set_header_state(parser, h_matching_con);
             break;
 
         case 't':
             // potentially transfer-encoding
             errno = store_byte(next_byte, parser);
+            set_http_state(parser, s_header_field);
             set_header_state(parser, h_matching_transfer_encoding);
             break;
 
         default:
+            set_http_state(parser, s_header_field);
             errno = read_header_field(parser, settings, next_byte, lower);
     }
-
-    set_http_state(parser, s_header_field);
 
     return errno;
 }
@@ -887,88 +888,6 @@ int start_request(http_parser *parser, const http_parser_settings *settings, cha
     return errno;
 }
 
-int request_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
-    int errno = 0, d_index;
-
-    for (d_index = 0; d_index < length; d_index++) {
-        char next_byte = data[d_index];
-        printf("%c", next_byte);
-
-        switch (parser->state) {
-            case s_req_start:
-                errno = start_request(parser, settings, next_byte);
-                break;
-
-            case s_req_method:
-                errno = read_request_method(parser, settings, next_byte);
-                break;
-
-            case s_req_path:
-                errno = read_request_path(parser, settings, next_byte);
-                break;
-
-            case s_http_version_head:
-                errno = read_http_version_head(parser, settings, next_byte);
-                break;
-
-            case s_http_version_major:
-                errno = read_http_version_major(parser, settings, next_byte);
-                break;
-
-            case s_http_version_minor:
-                errno = read_http_version_minor(parser, settings, next_byte);
-                break;
-
-            case s_header_field_start:
-                errno = read_header_field_start(parser, settings, next_byte, LOWER(next_byte));
-                break;
-
-            case s_header_field:
-                errno = read_header_field(parser, settings, next_byte, LOWER(next_byte));
-                break;
-
-            case s_header_value:
-                errno = read_header_value(parser, settings, next_byte);
-                break;
-
-            case s_chunk_size:
-                errno = read_chunk_size(parser, settings, next_byte);
-                break;
-
-            case s_chunk_parameters:
-                errno = read_chunk_parameters(parser, settings, next_byte);
-                break;
-
-            case s_body:
-            case s_chunk_data:
-                read_body(parser, settings, data, d_index, length);
-                d_index += parser->bytes_read;
-                reset_buffer(parser);
-                break;
-
-            case s_chunk_complete:
-                errno = read_chunk_complete(parser, settings, next_byte);
-                break;
-
-            default:
-                errno = ELERR_BAD_STATE;
-        }
-
-        if (!errno && parser->state == s_body_complete) {
-            errno = on_cb(parser, settings->on_message_complete);
-            reset_http_parser(parser);
-        }
-
-        if (errno) {
-            reset_http_parser(parser);
-            break;
-        }
-    }
-
-    return errno;
-}
-
-
 // Response processing
 int read_response_rphrase(http_parser *parser, const http_parser_settings *settings, char next_byte) {
     switch (next_byte) {
@@ -1026,13 +945,31 @@ int start_response(http_parser *parser, const http_parser_settings *settings, ch
     return errno;
 }
 
-int response_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
+// Big state switch
+int http_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t length) {
     int errno = 0, d_index;
 
     for (d_index = 0; d_index < length; d_index++) {
         char next_byte = data[d_index];
 
+#if DEBUG_OUTPUT
+        // Get the next character being processed during debug
+        printf("Next: %c\n", next_byte);
+#endif
+
         switch (parser->state) {
+            case s_req_start:
+                errno = start_request(parser, settings, next_byte);
+                break;
+
+            case s_req_method:
+                errno = read_request_method(parser, settings, next_byte);
+                break;
+
+            case s_req_path:
+                errno = read_request_path(parser, settings, next_byte);
+                break;
+
             case s_http_version_head:
                 errno = read_http_version_head(parser, settings, next_byte);
                 break;
@@ -1106,22 +1043,6 @@ int response_parser_exec(http_parser *parser, const http_parser_settings *settin
     return errno;
 }
 
-int http_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len) {
-    int errno = 0;
-
-    switch (parser->type) {
-        case HTTP_REQUEST:
-            errno = request_parser_exec(parser, settings, data, len);
-            break;
-        case HTTP_RESPONSE:
-            errno = response_parser_exec(parser, settings, data, len);
-            break;
-        default:
-            errno = ELERR_BAD_PARSER_TYPE;
-    }
-
-    return errno;
-}
 
 void http_parser_init(http_parser *parser, enum http_parser_type parser_type) {
     // Preserve app_data ref

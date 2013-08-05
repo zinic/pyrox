@@ -3,13 +3,11 @@ import unittest
 from pyrox.http import ResponseParser, ParserDelegate
 
 NORMAL_RESPONSE = """HTTP/1.1 200 OK\r
-Content-Length: 12\r\n
-\r
+Content-Length: 12\r\n\r
 This is test"""
 
 CHUNKED_RESPONSE = """HTTP/1.1 200 OK\r
-Transfer-Encoding: chunked\r\n
-\r
+Transfer-Encoding: chunked\r\n\r
 1e\r\nall your base are belong to us\r
 0\r
 """
@@ -120,7 +118,7 @@ class WhenParsingResponses(unittest.TestCase):
             RESPONSE_CODE_SLOT: 1,
             HEADER_FIELD_SLOT: 1,
             HEADER_VALUE_SLOT: 1,
-            BODY_SLOT: 2,
+            BODY_SLOT: 3,
             BODY_COMPLETE_SLOT: 1}, self)
 
     def test_reading_chunked_request(self):

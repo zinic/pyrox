@@ -40,7 +40,7 @@ args_parser.add_argument(
 def new_filter_chain():
     chain = HttpFilterChain()
     #chain.add_filter(SimpleFilter())
-    chain.add_filter(MeniscusKeystoneFilter())
+    #chain.add_filter(MeniscusKeystoneFilter())
     return chain
 
 

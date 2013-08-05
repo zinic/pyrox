@@ -1,5 +1,7 @@
 import socket
 
+import cProfile
+
 import tornado
 import tornado.ioloop
 import tornado.process
@@ -55,13 +57,45 @@ def write_response_head(stream, response, callback=None):
     write_message_headers(stream, response.headers, callback)
 
 
+class ProfilingHandler(ParserDelegate):
+
+    def __init__(self, delegate):
+        self.delegate = delegate
+
+    def on_status(self, status_code):
+        cProfile.runctx('self.delegate.on_status(status_code)', globals(), locals())
+
+    def on_req_method(self, method):
+        cProfile.runctx('self.delegate.on_req_method(method)', globals(), locals())
+
+    def on_http_version(self, major, minor):
+        cProfile.runctx('self.delegate.on_http_version(major, minor)', globals(), locals())
+
+    def on_req_path(self, url):
+        cProfile.runctx('self.delegate.on_req_path(url)', globals(), locals())
+
+    def on_header_field(self, field):
+        cProfile.runctx('self.delegate.on_header_field(field)', globals(), locals())
+
+    def on_header_value(self, value):
+        cProfile.runctx('self.delegate.on_header_value(value)', globals(), locals())
+
+    def on_headers_complete(self):
+        cProfile.runctx('self.delegate.on_headers_complete()', globals(), locals())
+
+    def on_body(self, bytes, is_chunked):
+        cProfile.runctx('self.delegate.on_body(bytes, is_chunked)', globals(), locals())
+
+    def on_message_complete(self, is_chunked, should_keep_alive):
+        cProfile.runctx('self.delegate.on_message_complete(is_chunked, should_keep_alive)', globals(), locals())
+
+
 class ProxyHandler(ParserDelegate):
 
     def __init__(self, filter_chain, stream):
         self.filter_chain = filter_chain
         self.current_header_field = None
         self.rejected = False
-        self.response = HttpResponse()
         self.stream = stream
 
     def on_header_field(self, field):
@@ -85,10 +119,11 @@ class UpstreamProxyHandler(ProxyHandler):
         super(UpstreamProxyHandler, self).__init__(filter_chain, downstream)
         self.upstream = upstream
         self.downstream = downstream
-        self.request = HttpRequest()
         self.downstream_host = downstream_host
 
     def on_req_method(self, method):
+        self.request = HttpRequest()
+        self.response = HttpResponse()
         self.request.method = method
 
     def on_req_path(self, url):
@@ -121,20 +156,18 @@ class UpstreamProxyHandler(ProxyHandler):
         if self.rejected:
             # Rejections do not stream the body - they discard it, therefore
             # we have to commit the head here.
-            if should_keep_alive != 0:
+            if should_keep_alive == 0:
                 write_response_head(
                     stream=self.upstream,
                     response=self.response,
                     callback=self.downstream.close())
             else:
-                print('here')
                 write_response_head(
                     stream=self.upstream,
                     response=self.response)
-        else:
-            if is_chunked == 0:
-                # Finish the last chunk.
-                self.downstream.write(b'0\r\n\r\n')
+        elif is_chunked != 0:
+            # Finish the last chunk.
+            self.downstream.write(b'0\r\n\r\n')
 
 
 class DownstreamProxyHandler(ProxyHandler):
@@ -145,6 +178,7 @@ class DownstreamProxyHandler(ProxyHandler):
         self.downstream = downstream
 
     def on_http_version(self, major, minor):
+        self.response = HttpResponse()
         self.response.version = '{}.{}'.format(major, minor)
 
     def on_status(self, status_code):
@@ -167,25 +201,25 @@ class DownstreamProxyHandler(ProxyHandler):
         if self.rejected:
             # Rejections do not stream the body - they discard it, therefore
             # we have to commit the head here.
-            if should_keep_alive != 0:
+            if should_keep_alive == 0:
                 write_response_head(
                     stream=self.upstream,
                     response=self.response,
-                    callback=self.downstream.close())
+                    callback=self.downstream.close)
             else:
                 write_response_head(
                     stream=self.upstream,
                     response=self.response)
-        else:
-            if is_chunked == 0:
-                if should_keep_alive != 0:
+        elif is_chunked != 0:
+                if should_keep_alive == 0:
                     # Finish the last chunk.
                     self.upstream.write(
                         b'0\r\n\r\n',
                         callback=self.downstream.close)
                 else:
                     self.upstream.write(b'0\r\n\r\n')
-
+        elif should_keep_alive == 0:
+            self.downstream.close()
 
 
 class ProxyConnection(object):
@@ -223,12 +257,16 @@ class ProxyConnection(object):
     def _on_upstream_read(self, data):
         try:
             self.upstream_parser.execute(data, len(data))
+        except iostream.StreamClosedError:
+            pass
         except Exception as ex:
             _LOG.exception(ex)
 
     def _on_downstream_read(self, data):
         try:
             self.downstream_parser.execute(data, len(data))
+        except iostream.StreamClosedError:
+            pass
         except Exception as ex:
             _LOG.exception(ex)
 
