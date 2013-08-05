@@ -13,7 +13,7 @@ def stop(signum, frame):
     IOLoop.instance().stop()
 
 
-def start(bind_address, downstream_host, fc_factory, processes=0):
+def start(bind_address, downstream_host, fc_factory, processes=1):
     http_proxy = TornadoHttpProxy(fc_factory, downstream_host)
     http_proxy.bind(address=bind_address[0], port=bind_address[1])
     http_proxy.start(processes)
