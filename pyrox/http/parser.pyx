@@ -1,3 +1,4 @@
+from libc.string cimport strlen
 from libc.stdlib cimport malloc, free
 from cpython cimport bool, PyBytes_FromStringAndSize, PyBytes_FromString
 
@@ -57,6 +58,7 @@ cdef int on_body(http_parser *parser, char *data, size_t offset, size_t length) 
     cdef object body_value = PyBytes_FromStringAndSize(data + offset, length)
     app_data.delegate.on_body(
         body_value,
+        length,
         http_transfer_encoding_chunked(parser))
     return 0
 
@@ -91,7 +93,7 @@ class ParserDelegate(object):
     def on_headers_complete(self):
         pass
 
-    def on_body(self, bytes, is_chunked):
+    def on_body(self, bytes, length, is_chunked):
         pass
 
     def on_message_complete(self, is_chunked, should_keep_alive):
@@ -140,14 +142,19 @@ cdef class HttpEventParser(object):
         self._settings.on_body = <http_body_cb>on_body
         self._settings.on_message_complete = <http_cb>on_message_complete
 
-    def __dealloc__(self):
-        free_http_parser(self._parser)
+    def destroy(self):
+        if self._parser != NULL:
+            free_http_parser(self._parser)
+            self._parser = NULL
 
-    def execute(self, char *data, size_t length):
+    def __dealloc__(self):
+        self.destroy()
+
+    def execute(self, char *data):
         cdef int retval
         try:
             retval = http_parser_exec(
-                self._parser, &self._settings, data, length)
+                self._parser, &self._settings, data, strlen(data))
             if retval:
                 raise Exception('Failed with errno: {}'.format(retval))
         except Exception as ex:

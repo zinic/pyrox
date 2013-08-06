@@ -57,6 +57,9 @@ def package_c():
         include_dirs=['include/'],
         sources=['include/http_el.c', 'pyrox/http/parser.c'],
         extra_compile_args=COMPILER_ARGS))
+    extensions.append(Extension(
+        'pyrox.http.model_util',
+        sources=['pyrox/http/model_util.c']))
     return extensions
 
 ext_modules = None

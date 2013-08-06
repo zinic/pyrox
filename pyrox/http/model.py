@@ -1,3 +1,5 @@
+from pyrox.http.model_util import header_to_bytes
+
 _EMPTY_HEADER_VALUES = ()
 
 
@@ -12,19 +14,6 @@ class HttpHeader(object):
     def __init__(self, name):
         self.name = name
         self.values = list()
-
-    def to_bytes(self):
-        bytes = bytearray(self.name)
-        bytes.extend(b': ')
-
-        if len(self.values) > 0:
-            bytes.extend(self.values[0])
-
-        for value in self.values[1:]:
-            bytes.extend(b', ')
-            bytes.extend(value)
-        bytes.extend(b'\r\n')
-        return str(bytes)
 
 
 class HttpMessage(object):
@@ -96,18 +85,6 @@ class HttpRequest(HttpMessage):
         self.method = None
         self.url = None
 
-    def to_bytes(self):
-        bytes = bytearray()
-        bytes.extend(self.method)
-        bytes.extend(b' ')
-        bytes.extend(self.url)
-        bytes.extend(b' HTTP/')
-        bytes.extend(self.version)
-        bytes.extend(b'\r\n')
-        for header in self.headers.values():
-            bytes.extend(header.to_bytes())
-        bytes.extend(b'\r\n')
-        return str(bytes)
 
 class HttpResponse(HttpMessage):
     """
@@ -121,14 +98,3 @@ class HttpResponse(HttpMessage):
         super(HttpResponse, self).__init__()
         self.status_code = None
 
-    def to_bytes(self):
-        bytes = bytearray()
-        bytes.extend(b'HTTP/')
-        bytes.extend(self.version)
-        bytes.extend(b' ')
-        bytes.extend(self.status_code)
-        bytes.extend(b' -\r\n')
-        for header in self.headers.values():
-            bytes.extend(header.to_bytes())
-        bytes.extend(b'\r\n')
-        return str(bytes)

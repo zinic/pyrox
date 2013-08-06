@@ -1,7 +1,5 @@
 import socket
 
-import cProfile
-
 import tornado
 import tornado.ioloop
 import tornado.process
@@ -11,7 +9,7 @@ import tornado.tcpserver as tcpserver
 from pyrox.env import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
-
+from pyrox.http.model_util import request_to_bytes, response_to_bytes, is_host
 
 _LOG = get_logger(__name__)
 
@@ -19,6 +17,7 @@ _LOG = get_logger(__name__)
 class ProfilingHandler(ParserDelegate):
 
     def __init__(self, delegate):
+        import cProfile
         self.delegate = delegate
 
     def on_status(self, status_code):
@@ -60,10 +59,10 @@ class ProxyHandler(ParserDelegate):
     def on_header_field(self, field):
         self.current_header_field = field
 
-    def on_body(self, bytes, is_chunked):
+    def on_body(self, bytes, length, is_chunked):
         if not self.rejected:
             if is_chunked:
-                hex_len = hex(len(bytes))[2:]
+                hex_len = hex(length)[2:]
                 self.stream.write(b'{}\r\n{}\r\n'.format(hex_len, bytes))
             else:
                 self.stream.write(bytes)
@@ -89,11 +88,8 @@ class UpstreamProxyHandler(ProxyHandler):
         self.request.version = '{}.{}'.format(major, minor)
 
     def on_header_value(self, value):
-        # Change the name to lowercase for comparasion
-        lower_name = self.current_header_field.lower()
-
         # Special case for host
-        if lower_name == 'host':
+        if is_host(value):
             header = self.request.header(self.current_header_field)
             header.values.append(self.downstream_host)
         else:
@@ -106,7 +102,7 @@ class UpstreamProxyHandler(ProxyHandler):
             self.rejected = True
             self.response = action.response
         else:
-            self.downstream.write(self.request.to_bytes())
+            self.downstream.write(request_to_bytes(self.request))
 
     def on_message_complete(self, is_chunked, should_keep_alive):
         if self.rejected:
@@ -114,11 +110,10 @@ class UpstreamProxyHandler(ProxyHandler):
             # we have to commit the head here.
             if should_keep_alive == 0:
                 self.upstream.write(
-                    self.response.to_bytes(),
+                    response_to_bytes(self.response),
                     callback=self.downstream.close)
             else:
-                self.upstream.write(
-                    self.response.to_bytes())
+                self.upstream.write(response_to_bytes(self.response))
         elif is_chunked != 0:
             # Finish the last chunk.
             self.downstream.write(b'0\r\n\r\n')
@@ -140,7 +135,6 @@ class DownstreamProxyHandler(ProxyHandler):
 
     def on_header_value(self, value):
         # Change the name to lowercase for comparasion
-        lower_name = self.current_header_field.lower()
         self.response.header(self.current_header_field).values.append(value)
 
     def on_headers_complete(self):
@@ -149,7 +143,7 @@ class DownstreamProxyHandler(ProxyHandler):
             self.rejected = True
             self.response = action.response
         else:
-            self.upstream.write(self.response.to_bytes())
+            self.upstream.write(response_to_bytes(self.response))
 
     def on_message_complete(self, is_chunked, should_keep_alive):
         if self.rejected:
@@ -157,11 +151,10 @@ class DownstreamProxyHandler(ProxyHandler):
             # we have to commit the head here.
             if should_keep_alive == 0:
                 self.upstream.write(
-                    self.response.to_bytes(),
+                    response_to_bytes(self.response),
                     callback=self.downstream.close)
             else:
-                self.upstream.write(
-                    self.response.to_bytes())
+                self.upstream.write(response_to_bytes(self.response))
         elif is_chunked != 0:
                 if should_keep_alive == 0:
                     # Finish the last chunk.
@@ -201,14 +194,16 @@ class ProxyConnection(object):
     def _on_upstream_close(self):
         if not self.downstream.closed():
             self.downstream.close()
+        self.upstream_parser.destroy()
 
     def _on_downstream_close(self):
         if not self.upstream.closed():
             self.upstream.close()
+        self.downstream_parser.destroy()
 
     def _on_upstream_read(self, data):
         try:
-            self.upstream_parser.execute(data, len(data))
+            self.upstream_parser.execute(data)
         except iostream.StreamClosedError:
             pass
         except Exception as ex:
@@ -216,7 +211,7 @@ class ProxyConnection(object):
 
     def _on_downstream_read(self, data):
         try:
-            self.downstream_parser.execute(data, len(data))
+            self.downstream_parser.execute(data)
         except iostream.StreamClosedError:
             pass
         except Exception as ex:
