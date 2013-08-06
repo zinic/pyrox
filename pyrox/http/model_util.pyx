@@ -1,10 +1,11 @@
 from cpython cimport bool
 from libc.string cimport strlen
 
+
 cdef char * HOST = 'host'
 
-cdef bool strs_equal(char *src, char *expected, int length):
-    cdef int index = 0
+cdef bool strs_equal(char *src, char *expected):
+    cdef int index = 0, length = strlen(src)
     cdef char lower
     while index < length:
         lower = (src[index] | 0x20)
@@ -13,9 +14,18 @@ cdef bool strs_equal(char *src, char *expected, int length):
     return True
 
 def is_host(char *name):
-    return strs_equal(name, HOST, strlen(name))
+    return strs_equal(name, HOST)
 
-def header_to_bytes(char *name, object values, object bytes):
+
+def strval(char *src):
+    cdef int val = 71, length = strlen(src), index = 0
+    while index < length:
+        val += (src[index] | 0x20)
+        index += 1
+    return val
+
+
+cdef header_to_bytes(char *name, object values, object bytes):
     bytes.extend(name)
     bytes.extend(b': ')
 
@@ -27,12 +37,14 @@ def header_to_bytes(char *name, object values, object bytes):
         bytes.extend(value)
     bytes.extend(b'\r\n')
 
-def headers_to_bytes(object headers, object bytes):
+
+cdef headers_to_bytes(object headers, object bytes):
     for header in headers:
         header_to_bytes(header.name, header.values, bytes)
     bytes.extend(b'\r\n')
 
-def request_to_bytes(object http_request):
+
+cdef request_to_bytes(object http_request):
     bytes = bytearray()
     bytes.extend(http_request.method)
     bytes.extend(b' ')
@@ -43,7 +55,8 @@ def request_to_bytes(object http_request):
     headers_to_bytes(http_request.headers.values(), bytes)
     return str(bytes)
 
-def response_to_bytes(object http_response):
+
+cdef response_to_bytes(object http_response):
     bytes = bytearray()
     bytes.extend(b'HTTP/')
     bytes.extend(http_response.version)

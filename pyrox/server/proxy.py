@@ -9,7 +9,7 @@ import tornado.tcpserver as tcpserver
 from pyrox.env import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
-from pyrox.http.model_util import request_to_bytes, response_to_bytes, is_host
+from pyrox.http.model_util import is_host
 
 _LOG = get_logger(__name__)
 
@@ -68,7 +68,7 @@ class UpstreamProxyHandler(ProxyHandler):
             self.rejected = True
             self.response = action.response
         else:
-            self.downstream.write(request_to_bytes(self.request))
+            self.downstream.write(self.request.to_bytes())
 
     def on_message_complete(self, is_chunked, should_keep_alive):
         if self.rejected:
@@ -76,10 +76,10 @@ class UpstreamProxyHandler(ProxyHandler):
             # we have to commit the head here.
             if should_keep_alive == 0:
                 self.upstream.write(
-                    response_to_bytes(self.response),
+                    self.response.to_bytes(),
                     callback=self.downstream.close)
             else:
-                self.upstream.write(response_to_bytes(self.response))
+                self.upstream.write(self.response.to_bytes())
         elif is_chunked != 0:
             # Finish the last chunk.
             self.downstream.write(b'0\r\n\r\n')
@@ -100,7 +100,6 @@ class DownstreamProxyHandler(ProxyHandler):
         self.response.status_code = str(status_code)
 
     def on_header_value(self, value):
-        # Change the name to lowercase for comparasion
         self.response.header(self.current_header_field).values.append(value)
 
     def on_headers_complete(self):
@@ -109,7 +108,7 @@ class DownstreamProxyHandler(ProxyHandler):
             self.rejected = True
             self.response = action.response
         else:
-            self.upstream.write(response_to_bytes(self.response))
+            self.upstream.write(self.response.to_bytes())
 
     def on_message_complete(self, is_chunked, should_keep_alive):
         if self.rejected:
@@ -117,10 +116,10 @@ class DownstreamProxyHandler(ProxyHandler):
             # we have to commit the head here.
             if should_keep_alive == 0:
                 self.upstream.write(
-                    response_to_bytes(self.response),
+                    self.respoinse.to_bytes(),
                     callback=self.downstream.close)
             else:
-                self.upstream.write(response_to_bytes(self.response))
+                self.upstream.write(self.response.to_bytes())
         elif is_chunked != 0:
                 if should_keep_alive == 0:
                     # Finish the last chunk.

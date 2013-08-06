@@ -1,4 +1,5 @@
-from pyrox.http.model_util import header_to_bytes
+from pyrox.http.model_util import request_to_bytes, response_to_bytes, strval
+
 
 _EMPTY_HEADER_VALUES = ()
 
@@ -40,11 +41,11 @@ class HttpMessage(object):
         message and returned. If the header already exists, then it is
         returned.
         """
-        lower_name = name.lower()
-        header = self._headers.get(lower_name, None)
+        nameval = strval(name)
+        header = self._headers.get(nameval, None)
         if not header:
             header = HttpHeader(name)
-            self._headers[lower_name] = header
+            self._headers[nameval] = header
         return header
 
     def get_header(self, name):
@@ -53,8 +54,7 @@ class HttpMessage(object):
         Unlike the header function, if the header does not exist then a None
         result is returned.
         """
-        lower_name = name.lower()
-        return self._headers.get(lower_name, None)
+        return self._headers.get(strval(name), None)
 
     def remove_header(self, name):
         """
@@ -62,9 +62,9 @@ class HttpMessage(object):
         If the header exists, it is removed and a result of True is returned.
         If the header does not exist then a result of False is returned.
         """
-        lower_name = name.lower()
-        if lower_name in self._headers:
-            del self._headers[lower_name]
+        nameval = strval(name)
+        if nameval in self._headers:
+            del self._headers[nameval]
             return True
         return False
 
@@ -85,6 +85,9 @@ class HttpRequest(HttpMessage):
         self.method = None
         self.url = None
 
+    def to_bytes(self):
+        return request_to_bytes(self)
+
 
 class HttpResponse(HttpMessage):
     """
@@ -97,3 +100,6 @@ class HttpResponse(HttpMessage):
     def __init__(self):
         super(HttpResponse, self).__init__()
         self.status_code = None
+
+    def to_bytes(self):
+        return response_to_bytes(self)
