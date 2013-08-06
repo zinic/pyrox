@@ -44,7 +44,7 @@ cdef headers_to_bytes(object headers, object bytes):
     bytes.extend(b'\r\n')
 
 
-cdef request_to_bytes(object http_request):
+def request_to_bytes(object http_request):
     bytes = bytearray()
     bytes.extend(http_request.method)
     bytes.extend(b' ')
@@ -56,7 +56,7 @@ cdef request_to_bytes(object http_request):
     return str(bytes)
 
 
-cdef response_to_bytes(object http_response):
+def response_to_bytes(object http_response):
     bytes = bytearray()
     bytes.extend(b'HTTP/')
     bytes.extend(http_response.version)
