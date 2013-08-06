@@ -3,6 +3,7 @@ dist/
 .coverage
 *.pyc
 pyrox/http/parser.c
+pyrox/http/model_util.c
 *.so
 .idea
 *.egg-info/
