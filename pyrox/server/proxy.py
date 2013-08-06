@@ -14,40 +14,6 @@ from pyrox.http.model_util import request_to_bytes, response_to_bytes, is_host
 _LOG = get_logger(__name__)
 
 
-class ProfilingHandler(ParserDelegate):
-
-    def __init__(self, delegate):
-        import cProfile
-        self.delegate = delegate
-
-    def on_status(self, status_code):
-        cProfile.runctx('self.delegate.on_status(status_code)', globals(), locals())
-
-    def on_req_method(self, method):
-        cProfile.runctx('self.delegate.on_req_method(method)', globals(), locals())
-
-    def on_http_version(self, major, minor):
-        cProfile.runctx('self.delegate.on_http_version(major, minor)', globals(), locals())
-
-    def on_req_path(self, url):
-        cProfile.runctx('self.delegate.on_req_path(url)', globals(), locals())
-
-    def on_header_field(self, field):
-        cProfile.runctx('self.delegate.on_header_field(field)', globals(), locals())
-
-    def on_header_value(self, value):
-        cProfile.runctx('self.delegate.on_header_value(value)', globals(), locals())
-
-    def on_headers_complete(self):
-        cProfile.runctx('self.delegate.on_headers_complete()', globals(), locals())
-
-    def on_body(self, bytes, is_chunked):
-        cProfile.runctx('self.delegate.on_body(bytes, is_chunked)', globals(), locals())
-
-    def on_message_complete(self, is_chunked, should_keep_alive):
-        cProfile.runctx('self.delegate.on_message_complete(is_chunked, should_keep_alive)', globals(), locals())
-
-
 class ProxyHandler(ParserDelegate):
 
     def __init__(self, filter_chain, stream):

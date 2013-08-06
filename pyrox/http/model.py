@@ -97,4 +97,3 @@ class HttpResponse(HttpMessage):
     def __init__(self):
         super(HttpResponse, self).__init__()
         self.status_code = None
-
