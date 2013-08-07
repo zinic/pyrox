@@ -14,8 +14,24 @@ _LOG = get_logger(__name__)
 _DEFAULT_CFG = '/etc/pyrox/pyrox.conf'
 
 _CFG_DEFAULTS = {
-    'core': {
+    PYROX_CORE: {
         'processes': 1
+    },
+
+    PYROX_PLUGINS: {
+    },
+
+    PYROX_PIPELINE: {
+    },
+
+    PYROX_ROUTING: {
+    },
+
+    PYROX_LOGGING: {
+    },
+
+    PYROX_DEFAULTS: {
+        'status_code': 400
     }
 }
 
@@ -58,6 +74,7 @@ class CoreConfiguration(ConfigurationObject):
     def processes(self):
         """
         Returns the number of processess Pyrox should spin up to handle
-        messages. If unset, this defaults to 1.
+        messages. If unset, this defaults to 0 which informs the system to
+        discover the number of available CPUs and assign a process to each.
         """
         return self._getint('processes')
