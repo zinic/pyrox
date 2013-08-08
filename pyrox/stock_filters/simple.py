@@ -1,4 +1,4 @@
-from pyrox.http.filtering import HttpFilter, reject, pass_event
+from pyrox.http.filtering import HttpFilter, pass_event
 
 
 class SimpleFilter(HttpFilter):
