@@ -10,8 +10,9 @@ PYROX_ROUTING = 'routing'
 PYROX_LOGGING = 'logging'
 PYROX_DEFAULTS = 'defaults'
 
-_LOG = get_logger(__name__)
 _DEFAULT_CFG = '/etc/pyrox/pyrox.conf'
+
+_LOG = get_logger(__name__)
 
 _CFG_DEFAULTS = {
     PYROX_CORE: {
@@ -38,8 +39,11 @@ _CFG_DEFAULTS = {
 
 def load_config(location=_DEFAULT_CFG):
     if not os.path.isfile(location):
-        raise Exception(
-            'Unable to locate configuration file: {}'.format(location))
+        config_exception_msg = \
+            'Unable to locate configuration file: {}'.format(location)
+        _LOG.error(config_exception_msg)
+        raise Exception(config_exception_msg)
+
     cfg = ConfigParser(_CFG_DEFAULTS)
     cfg.read(location)
     return PyroxConfiguration(cfg)
@@ -73,7 +77,7 @@ class CoreConfiguration(ConfigurationObject):
     @property
     def processes(self):
         """
-        Returns the number of processess Pyrox should spin up to handle
+        Returns the number of processes Pyrox should spin up to handle
         messages. If unset, this defaults to 0 which informs the system to
         discover the number of available CPUs and assign a process to each.
         """

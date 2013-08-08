@@ -13,7 +13,7 @@ class FilterAction(object):
     """
     A filter action allows us to tell upstream controls what the filter has
     decided as the next course of action. Certain filter actions may include
-    a resposne object for serialization out to the client in the case where
+    a response object for serialization out to the client in the case where
     the action enforces a rejection.
 
     Attributes:
@@ -45,7 +45,7 @@ class HttpFilterChain(object):
 
     Attributes:
         chain       A list of HttpFilter objects organized to act as a pipeline
-                    with element 0 being the first to recieve events.
+                    with element 0 being the first to receive events.
     """
     def __init__(self):
         self.chain = list()
@@ -78,7 +78,7 @@ class HttpFilterChain(object):
             except Exception as ex:
                 # TODO:Implement - Handle this error
                 action = reject()
-            if (action):
+            if action:
                 last_action = action
                 if action.is_consuming() or action.is_rejecting():
                     break
@@ -121,8 +121,8 @@ _DEFAULT_CONSUME_ACTION = FilterAction(CONSUME)
 
 def consume():
     """
-    Consumes the event and does not allow any further downstream filsters to
-    see it. This effectively halts exectuion of the filter chain but leaves the
+    Consumes the event and does not allow any further downstream filters to
+    see it. This effectively halts execution of the filter chain but leaves the
     request to pass through the proxy.
     """
     return _DEFAULT_CONSUME_ACTION
