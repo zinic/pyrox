@@ -46,6 +46,7 @@ def load_config(location=_DEFAULT_CFG):
 
     cfg = ConfigParser(_CFG_DEFAULTS)
     cfg.read(location)
+    _LOG.info('Pyrox configuration file loaded from: {}'.format(location))
     return PyroxConfiguration(cfg)
 
 
