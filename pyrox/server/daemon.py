@@ -33,10 +33,10 @@ def start_pyrox(fc_factory, other_cfg=None):
     # Create proxy server ref
     http_proxy = TornadoHttpProxy(
         fc_factory,
-        config.routing.downstream_hosts[0])
-    _LOG.info('Downstream targets are: {}'.format(
+        config.routing.upstream_hosts[0])
+    _LOG.info('Upstream targets are: {}'.format(
         ['http://{0}:{1}'.format(dst[0], dst[1])
-            for dst in config.routing.downstream_hosts]))
+            for dst in config.routing.upstream_hosts]))
     # Set bind host
     bind_host = config.core.bind_host.split(':')
     if len(bind_host) != 2:

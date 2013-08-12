@@ -5,10 +5,15 @@ from ConfigParser import ConfigParser
 
 _CFG_DEFAULTS = {
     'core': {
-        'processes': 1
+        'processes': 1,
+        'bind_host': 'localhost:8080'
     },
     'routing': {
-        'downstream_hosts': 'localhost:80'
+        'upstream_hosts': 'localhost:80'
+    },
+    'templates': {
+        'pyrox_error_sc': 502,
+        'rejection_sc': 400
     },
     'logging': {
         'console': True,
@@ -35,6 +40,7 @@ class PyroxConfiguration(object):
         self.core = CoreConfiguration(cfg)
         self.routing = RoutingConfiguration(cfg)
         self.pipeline = PipelineConfiguration(cfg)
+        self.templates = TemplatesConfiguration(cfg)
         self.logging = LoggingConfiguration(cfg)
 
 
@@ -142,7 +148,41 @@ class PipelineConfiguration(ConfigurationObject):
     """
     Class mapping for the Pyrox configuration section 'pipeline'
     """
-    pass
+    @property
+    def upstream(self):
+        pass
+
+    @property
+    def downstream(self):
+        pass
+
+    @property
+    def downstream(self):
+        pass
+
+
+
+class TemplatesConfiguration(ConfigurationObject):
+    """
+    Class mapping for the Pyrox configuration section 'templates'
+    """
+    @property
+    def pyrox_error_sc(self):
+        """
+        Returns the status code to be set for any error that happens within
+        Pyrox that would prevent normal service of client requests. If left
+        unset this option defaults to 502.
+        """
+        return self._getint('pyrox_error_sc')
+
+    @property
+    def rejection_sc(self):
+        """
+        Returns the default status code to be set for client request
+        rejection made with no provided response object to serialize. If
+        left unset this option defaults to 400.
+        """
+        return self._getint('rejection_sc')
 
 
 def _host_to_tuple(raw_host):
@@ -160,7 +200,7 @@ class RoutingConfiguration(ConfigurationObject):
     Class mapping for the Pyrox configuration section 'routing'
     """
     @property
-    def downstream_hosts(self):
+    def upstream_hosts(self):
         """
         Returns a list of downstream hosts to proxy requests to. This may be
         set to either a single host and port or a comma delimited list of hosts
@@ -169,11 +209,11 @@ class RoutingConfiguration(ConfigurationObject):
 
         Examples
         --------
-        downstream_hosts = host:port
-        downstream_hosts = host:port,host:port,host:port
-        downstream_hosts = host:port, host:port, host:port
+        upstream_hosts = host:port
+        upstream_hosts = host:port,host:port,host:port
+        upstream_hosts = host:port, host:port, host:port
         """
-        ds_hosts = self._get('downstream_hosts')
+        ds_hosts = self._get('upstream_hosts')
         if ',' in ds_hosts:
             hosts = (host.strip() for host in ds_hosts.split(','))
         else:
