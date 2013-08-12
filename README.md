@@ -25,7 +25,7 @@ After building pyrox you should be able to run it with the proxy shell script
 located within the project root.
 
 ```bash
-./pyrox
+./proxy
 ```
 
 ##That Legal Thing...
