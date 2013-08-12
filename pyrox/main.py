@@ -13,17 +13,11 @@ args_parser = argparse.ArgumentParser(
     prog='proxy',
     description='Pyrox, the fast Python HTTP middleware server.')
 args_parser.add_argument(
-    '-d',
+    '-c',
     nargs='?',
-    dest='downstream_host',
-    default='127.0.0.1:80',
-    help='Sets the downstream host to proxy to.')
-args_parser.add_argument(
-    '-b',
-    nargs='?',
-    dest='bind_host',
-    default='127.0.0.1:8080',
-    help='Sets the host to bind to and listen on.')
+    dest='other_cfg',
+    default=None,
+    help='Sets the configuration file to load on startup.')
 args_parser.add_argument(
     '-p',
     nargs='?',
@@ -44,30 +38,14 @@ def new_filter_chain():
     return chain
 
 
-def parse_args():
-    return args_parser.parse_args()
-
-
-def parse_host_arg(host):
-    if ':' in host:
-        split_host = host.split(':')
-        return (split_host[0], int(split_host[1]))
-    else:
-        return (host, 80)
-
-
 def start(args):
-    downstream_addr = parse_host_arg(args.downstream_host)
-    bind_addr = parse_host_arg(args.bind_host)
-
-    server.start(
-        bind_address=bind_addr,
-        downstream_host=downstream_addr,
-        fc_factory=new_filter_chain,)
+    server.start_pyrox(
+        fc_factory=new_filter_chain,
+        other_cfg = args.other_cfg)
 
 
 if len(sys.argv) > 1:
-    args = parse_args()
+    args = args_parser.parse_args()
     if args.start:
         start(args)
 else:

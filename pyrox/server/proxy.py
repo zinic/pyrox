@@ -6,7 +6,7 @@ import tornado.process
 import tornado.iostream as iostream
 import tornado.tcpserver as tcpserver
 
-from pyrox.env import get_logger
+from pyrox.log import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
 from pyrox.http.model_util import is_host
