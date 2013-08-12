@@ -2,10 +2,14 @@ import os
 import sys
 import argparse
 
+from pyrox.log import get_logger
 import pyrox.server as server
 
 from pyrox.http.filtering import HttpFilterChain
-#from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
+#from pyrox.stock_filters.simple import SimpleFilter
+
+
+_LOG = get_logger(__name__)
 
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
 
@@ -35,13 +39,16 @@ def new_filter_chain():
     chain = HttpFilterChain()
     #chain.add_filter(SimpleFilter())
     #chain.add_filter(MeniscusKeystoneFilter())
+    if len(chain.chain):
+        _LOG.info('Loading the following filters: {}'.format(
+            str(chain.chain).strip('[]')))
     return chain
 
 
 def start(args):
     server.start_pyrox(
         fc_factory=new_filter_chain,
-        other_cfg = args.other_cfg)
+        other_cfg=args.other_cfg)
 
 
 if len(sys.argv) > 1:

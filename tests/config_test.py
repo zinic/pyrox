@@ -1,6 +1,6 @@
 import unittest
 
-from pyrox.server.config import load_config
+from pyrox.config import load_config
 
 
 class WhenManipulatingHeaders(unittest.TestCase):

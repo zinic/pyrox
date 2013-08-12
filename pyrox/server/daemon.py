@@ -34,12 +34,18 @@ def start_pyrox(fc_factory, other_cfg=None):
     http_proxy = TornadoHttpProxy(
         fc_factory,
         config.routing.downstream_hosts[0])
-
+    _LOG.info('Downstream targets are: {}'.format(
+        ['http://{0}:{1}'.format(dst[0], dst[1])
+            for dst in config.routing.downstream_hosts]))
     # Set bind host
     bind_host = config.core.bind_host.split(':')
     if len(bind_host) != 2:
         raise ConfigurationError('bind_host must have a port specified')
+
+    # Bind the server
     http_proxy.bind(address=bind_host[0], port=int(bind_host[1]))
+    _LOG.info('Pyrox listening on: http://{0}:{1}'.format(
+        bind_host[0], bind_host[1]))
 
     # Start Tornado
     http_proxy.start(config.core.processes)

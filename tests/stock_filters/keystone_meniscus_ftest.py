@@ -9,7 +9,7 @@ from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
 
 
-class WhenFuncTestingKeystomeMeniscus(unittest.TestCase):
+class WhenFuncTestingKeystoneMeniscus(unittest.TestCase):
     def setUp(self):
         self.config = ConfigParser()
         self.config.read("/etc/pyrox/pyrox.conf")

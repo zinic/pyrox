@@ -179,4 +179,3 @@ class RoutingConfiguration(ConfigurationObject):
         else:
             hosts = (ds_hosts,)
         return [_host_to_tuple(host) for host in hosts]
-

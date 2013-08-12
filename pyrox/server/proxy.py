@@ -116,7 +116,7 @@ class DownstreamProxyHandler(ProxyHandler):
             # we have to commit the head here.
             if should_keep_alive == 0:
                 self.upstream.write(
-                    self.respoinse.to_bytes(),
+                    self.response.to_bytes(),
                     callback=self.downstream.close)
             else:
                 self.upstream.write(self.response.to_bytes())

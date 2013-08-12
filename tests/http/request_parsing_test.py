@@ -2,26 +2,28 @@ import unittest
 
 from pyrox.http import RequestParser, ParserDelegate
 
-UNEXPECTED_HEADER_REQUEST = \
-"""GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
-Test: test\r
-Connection: keep-alive\r
-Content-Length: 12\r\n\r
-This is test"""
+UNEXPECTED_HEADER_REQUEST = (
+    'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
+    'Test: test\r\n'
+    'Connection: keep-alive\r\n'
+    'Content-Length: 12\r\n\r\n'
+    'This is test'
+)
 
-NORMAL_REQUEST = \
-"""GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
-Connection: keep-alive\r
-Content-Length: 12\r\n\r
-This is test"""
+NORMAL_REQUEST = (
+    'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
+    'Connection: keep-alive\r\n'
+    'Content-Length: 12\r\n\r\n'
+    'This is test'
+)
 
-CHUNKED_REQUEST = \
-"""GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r
-Connection: keep-alive\r
-Transfer-Encoding: chunked\r\n\r
-1e\r\nall your base are belong to us\r
-0\r
-"""
+CHUNKED_REQUEST = (
+    'GET /test/12345?field=f1&field2=f2#fragment HTTP/1.1\r\n'
+    'Connection: keep-alive\r\n'
+    'Transfer-Encoding: chunked\r\n\r\n'
+    '1e\r\nall your base are belong to us\r\n'
+    '0\r\n'
+)
 
 REQUEST_METHOD_SLOT = 'REQUEST_METHOD'
 REQUEST_URI_SLOT = 'REQUEST_URI'
@@ -97,6 +99,7 @@ class TrackingDelegate(ParserDelegate):
     def on_message_complete(self, is_chunked, should_keep_alive):
         self.register_hit(BODY_COMPLETE_SLOT)
         self.delegate.on_message_complete(is_chunked, should_keep_alive)
+
 
 class ValidatingDelegate(ParserDelegate):
 
