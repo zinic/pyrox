@@ -33,9 +33,9 @@ class FilterAction(object):
         return self.kind == REJECT
 
 
-class HttpFilterChain(object):
+class HttpFilterPipeline(object):
     """
-    The filter chain represents a filter pipeline. This pipeline currently
+    The filter pipeline represents a series of filters. This pipeline currently
     serves bidirectional filtering (request and response). This chain will have
     the request head and response head events passed through it during the
     lifecycle of a client request. Each request is assigned a new copy of the

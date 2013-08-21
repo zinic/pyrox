@@ -1,4 +1,5 @@
 import signal
+import pynsive
 
 from pyrox.log import get_logger, get_log_manager
 from pyrox.config import load_config
@@ -15,12 +16,25 @@ class ConfigurationError(Exception):
         self.msg = msg
 
     def __str__(self):
-        return 'Config error halted daemon start. Reason: {}'.format(self.msg)
+        return 'Config error halted daemon start. Reason: {}'.format(
+            self.msg)
 
 
 def stop(signum, frame):
     _LOG.debug('Stop called at frame:\n{}'.format(frame))
     IOLoop.instance().stop()
+
+
+def build_fc_factories(cfg):
+    resolved_filters = dict()
+
+    for alias in cfg.pipeline.upstream():
+        fdef = getattr(cfg.pipeline, alias)
+        print('Would import {}'.format(fdef))
+
+    for alias in cfg.pipeline.downstream():
+        fdef = getattr(cfg.pipeline, alias)
+        print('Would import {}'.format(fdef))
 
 
 def start_pyrox(fc_factory, other_cfg=None):
@@ -30,6 +44,13 @@ def start_pyrox(fc_factory, other_cfg=None):
     logging_manager = get_log_manager()
     logging_manager.configure(config)
 
+    # Resolve our filter chains
+    try:
+        fc_factories = build_fc_factories(config)
+    except Exception as ex:
+        _LOG.exception(ex)
+        return -1
+
     # Create proxy server ref
     http_proxy = TornadoHttpProxy(
         fc_factory,
@@ -37,6 +58,7 @@ def start_pyrox(fc_factory, other_cfg=None):
     _LOG.info('Upstream targets are: {}'.format(
         ['http://{0}:{1}'.format(dst[0], dst[1])
             for dst in config.routing.upstream_hosts]))
+
     # Set bind host
     bind_host = config.core.bind_host.split(':')
     if len(bind_host) != 2:

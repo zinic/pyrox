@@ -23,6 +23,23 @@ _CFG_DEFAULTS = {
 }
 
 
+def _split_and_strip(values_str, split_on):
+    if split_on in values_str:
+        return (value.strip() for value in values_str.split(split_on))
+    else:
+        return (values_str,)
+
+
+def _host_tuple(host_str):
+    parts = host_str.split(':')
+    if len(parts) == 1:
+        return (parts[0], 80)
+    elif len(parts) == 2:
+        return (parts[0], int(parts[1]))
+    else:
+        raise Exception('Malformed host: {}'.format(host))
+
+
 def load_config(location='/etc/pyrox/pyrox.conf'):
     if not os.path.isfile(location):
         raise Exception(
@@ -63,8 +80,14 @@ class ConfigurationObject(object):
         self._cfg = cfg
         self._namespace = self._format_namespace()
 
+    def __getattr__(self, name):
+        return self._get(name)
+
     def _format_namespace(self):
         return type(self).__name__.replace('Configuration', '').lower()
+
+    def _options(self):
+        return self._cfg.options()
 
     def _has_option(self, option):
         return self._cfg.has_option(self._namespace, option)
@@ -147,19 +170,64 @@ class LoggingConfiguration(ConfigurationObject):
 class PipelineConfiguration(ConfigurationObject):
     """
     Class mapping for the Pyrox configuration section 'pipeline'
+
+    Configuring a pipeline requires the admin to first configure aliases to
+    each filter referenced. This is done by adding a named configuration
+    option to this section that does not match "upstream" or "downstream."
+
+    After the filter aliases are specified, they may be then organized in
+    comma delimited lists and assigned to either the "upstream" option for
+    filters that should recieve upstream events or the "downstream" option
+    for filters that should recieve downstream events.
+
+    In the context of Pyrox, upstream events originate from the requesting
+    client also known as the request. Downstream events originate from the
+    origin service (the upstream request target) and is also known as the
+    response.
+
+    Example Pipeline Configuration
+    ---------------------
+    filter_1 = myfilters.upstream.Filter1
+    filter_2 = myfilters.upstream.Filter2
+    filter_3 = myfilters.downstream.Filter3
+
+    upstream = filter_1, filter_2
+    downstream = filter_3
     """
     @property
     def upstream(self):
-        pass
+        """
+        Returns the list of filters configured to handle upstream events.
+        This configuration option must be a comma delimited list of filter
+        aliases. If left unset this option defaults to an empty list.
+        """
+        return self._pipeline_for('upstream')
 
     @property
     def downstream(self):
-        pass
+        """
+        Returns the list of filters configured to handle downstream events.
+        This configuration option must be a comma delimited list of filter
+        aliases. If left unset this option defaults to an empty tuple.
+        """
+        return self._pipeline_for('downstream')
 
-    @property
-    def downstream(self):
-        pass
+    def _pipeline_for(self, stream):
+        pipeline = list()
+        filters = self._filter_dict()
+        pipeline_str = self._get(stream)
+        for pl_filter in _split_and_strip(pipeline_str, ','):
+            if pl_filter in filters:
+                pipeline.append(filters[pl_filter])
+        return pipeline
 
+    def _filter_dict(self):
+        filters = dict()
+        for pfalias in self._options():
+            if pfalias == 'downstream' or pfalias == 'upstream':
+                continue
+            filters[pfalias] = self._get(pfalias)
+        return filters
 
 
 class TemplatesConfiguration(ConfigurationObject):
@@ -185,16 +253,6 @@ class TemplatesConfiguration(ConfigurationObject):
         return self._getint('rejection_sc')
 
 
-def _host_to_tuple(raw_host):
-    parts = raw_host.split(':')
-    if len(parts) == 1:
-        return (parts[0], 80)
-    elif len(parts) == 2:
-        return (parts[0], int(parts[1]))
-    else:
-        raise Exception('Malformed host: {}'.format(host))
-
-
 class RoutingConfiguration(ConfigurationObject):
     """
     Class mapping for the Pyrox configuration section 'routing'
@@ -213,9 +271,5 @@ class RoutingConfiguration(ConfigurationObject):
         upstream_hosts = host:port,host:port,host:port
         upstream_hosts = host:port, host:port, host:port
         """
-        ds_hosts = self._get('upstream_hosts')
-        if ',' in ds_hosts:
-            hosts = (host.strip() for host in ds_hosts.split(','))
-        else:
-            hosts = (ds_hosts,)
-        return [_host_to_tuple(host) for host in hosts]
+        hosts = self._get('upstream_hosts')
+        return [_host_tuple(host) for host in _split_and_strip(hosts, ',')]

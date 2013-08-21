@@ -5,7 +5,7 @@ import argparse
 from pyrox.log import get_logger
 import pyrox.server as server
 
-from pyrox.http.filtering import HttpFilterChain
+from pyrox.http.filtering import HttpFilterPipeline
 #from pyrox.stock_filters.simple import SimpleFilter
 
 
@@ -21,7 +21,9 @@ args_parser.add_argument(
     nargs='?',
     dest='other_cfg',
     default=None,
-    help='Sets the configuration file to load on startup.')
+    help="""
+        Sets the configuration file to load on startup. If unset this
+        option defaults to /etc/pyrox/pyrox.conf""")
 args_parser.add_argument(
     '-p',
     nargs='?',
@@ -33,16 +35,6 @@ args_parser.add_argument(
     'start',
     default=False,
     help='Starts the daemon.')
-
-
-def new_filter_chain():
-    chain = HttpFilterChain()
-    #chain.add_filter(SimpleFilter())
-    #chain.add_filter(MeniscusKeystoneFilter())
-    if len(chain.chain):
-        _LOG.info('Loading the following filters: {}'.format(
-            str(chain.chain).strip('[]')))
-    return chain
 
 
 def start(args):
