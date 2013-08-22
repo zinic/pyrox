@@ -7,6 +7,9 @@ Action enumerations.
 NEXT_FILTER = 0
 CONSUME = 1
 REJECT = 2
+ROUTE = 3
+
+BREAKING_ACTIONS = (CONSUME, REJECT, ROUTE)
 
 
 class FilterAction(object):
@@ -19,18 +22,23 @@ class FilterAction(object):
     Attributes:
         kind        An integer value representing the kind of action this
                     object is intended to communicate.
-        response    A HttpResponse object to be rendered to the client when
-                    this action is consumed.
+        payload     An argument to be passed on to the consumer of this action.
     """
-    def __init__(self, kind=NEXT_FILTER, response=None):
+    def __init__(self, kind=NEXT_FILTER, payload=None):
         self.kind = kind
-        self.response = response
+        self.payload = payload
+
+    def breaks_pipeline(self):
+        return self.kind in BREAKING_ACTIONS
 
     def is_consuming(self):
         return self.kind == CONSUME
 
     def is_rejecting(self):
         return self.kind == REJECT
+
+    def is_routing(self):
+        return self.kind == ROUTE
 
 
 class HttpFilterPipeline(object):
@@ -64,7 +72,7 @@ class HttpFilterPipeline(object):
                 action = reject()
             if (action):
                 last_action = action
-                if action.is_consuming() or action.is_rejecting():
+                if action.breaks_pipeline():
                     break
 
         return last_action
@@ -80,7 +88,7 @@ class HttpFilterPipeline(object):
                 action = reject()
             if action:
                 last_action = action
-                if action.is_consuming() or action.is_rejecting():
+                if action.breaks_pipeline():
                     break
 
         return last_action
@@ -139,6 +147,14 @@ def reject(response=None):
     return FilterAction(REJECT, response) if response\
         else FilterAction(REJECT, _DEFAULT_REJECT_RESP)
 
+def route(upstream_target):
+    """
+    Routes the request that this event is related to. Usage of this method will
+    halt execution of the filter pipeline and begin streaming the request to
+    the specified upstream target. This method is invalid for handling an
+    upstream response.
+    """
+    return FilterAction(ROUTE, upstream_target)
 
 def pass_event():
     """

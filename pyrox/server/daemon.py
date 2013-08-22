@@ -5,7 +5,7 @@ from pyrox.log import get_logger, get_log_manager
 from pyrox.config import load_config
 from pyrox.http.filtering import HttpFilterPipeline
 from tornado.ioloop import IOLoop
-from pyrox.server.proxy import TornadoHttpProxy
+from pyrox.server.proxyng import TornadoHttpProxy
 
 
 _LOG = get_logger(__name__)
