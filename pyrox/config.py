@@ -11,6 +11,7 @@ _CFG_DEFAULTS = {
     'routing': {
         'upstream_hosts': 'localhost:80'
     },
+    'pipeline': {},
     'templates': {
         'pyrox_error_sc': 502,
         'rejection_sc': 400
@@ -87,7 +88,7 @@ class ConfigurationObject(object):
         return type(self).__name__.replace('Configuration', '').lower()
 
     def _options(self):
-        return self._cfg.options()
+        return self._cfg.options(self._namespace)
 
     def _has_option(self, option):
         return self._cfg.has_option(self._namespace, option)
@@ -95,14 +96,18 @@ class ConfigurationObject(object):
     def _get(self, option):
         if self._has_option(option):
             return self._cfg.get(self._namespace, option)
-        else:
+        elif option in _CFG_DEFAULTS[self._namespace]:
             return _CFG_DEFAULTS[self._namespace][option]
+        else:
+            return None
 
     def _getint(self, option):
         if self._has_option(option):
             return self._cfg.getint(self._namespace, option)
-        else:
+        elif option in _CFG_DEFAULTS[self._namespace]:
             return int(_CFG_DEFAULTS[self._namespace][option])
+        else:
+            return None
 
 
 class CoreConfiguration(ConfigurationObject):
@@ -120,6 +125,24 @@ class CoreConfiguration(ConfigurationObject):
         processes = 0
         """
         return self._getint('processes')
+
+    @property
+    def plugin_paths(self):
+        """
+        Returns a list of directories to plug into when attempting to resolve
+        the names of pipeline filters. This option may be a single directory or
+        a comma delimited list of directories.
+
+        Example
+        -------
+        plugin_paths = /usr/share/project/python
+        plugin_paths = /usr/share/project/python,/usr/share/other/python
+        """
+        paths = self._get('plugin_paths')
+        if paths:
+            return [path for path in _split_and_strip(paths, ',')]
+        else:
+            return list()
 
     @property
     def bind_host(self):
@@ -174,6 +197,8 @@ class PipelineConfiguration(ConfigurationObject):
     Configuring a pipeline requires the admin to first configure aliases to
     each filter referenced. This is done by adding a named configuration
     option to this section that does not match "upstream" or "downstream."
+    Filter aliases must point to a class or function that returns a filter
+    instance with the expected entry points.
 
     After the filter aliases are specified, they may be then organized in
     comma delimited lists and assigned to either the "upstream" option for
@@ -216,9 +241,10 @@ class PipelineConfiguration(ConfigurationObject):
         pipeline = list()
         filters = self._filter_dict()
         pipeline_str = self._get(stream)
-        for pl_filter in _split_and_strip(pipeline_str, ','):
-            if pl_filter in filters:
-                pipeline.append(filters[pl_filter])
+        if pipeline_str:
+            for pl_filter in _split_and_strip(pipeline_str, ','):
+                if pl_filter in filters:
+                    pipeline.append(filters[pl_filter])
         return pipeline
 
     def _filter_dict(self):

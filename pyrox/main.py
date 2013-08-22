@@ -38,9 +38,7 @@ args_parser.add_argument(
 
 
 def start(args):
-    server.start_pyrox(
-        fc_factory=new_filter_chain,
-        other_cfg=args.other_cfg)
+    server.start_pyrox(other_cfg=args.other_cfg)
 
 
 if len(sys.argv) > 1:

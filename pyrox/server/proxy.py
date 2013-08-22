@@ -152,13 +152,14 @@ class ProxyConnection(object):
     A proxy connection manages the lifecycle of the sockets opened during a
     proxied client request against Pyrox.
     """
-    def __init__(self, filter_chain, downstream, upstream, upstream_host):
+    def __init__(self, us_filter_pipeline, ds_filter_pipeline, downstream,
+            upstream, upstream_host):
         self.downstream = downstream
         self.upstream = upstream
         self.downstream_handler = DownstreamProxyHandler(
-            filter_chain, downstream, upstream, upstream_host)
+            ds_filter_pipeline, downstream, upstream, upstream_host)
         self.upstream_handler = UpstreamProxyHandler(
-            filter_chain, downstream, upstream)
+            us_filter_pipeline, downstream, upstream)
         self.downstream_parser = RequestParser(self.downstream_handler)
         self.upstream_parser = ResponseParser(self.upstream_handler)
 
@@ -205,11 +206,16 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
     """
     Subclass of the Tornado TCPServer that lets us set up the Pyrox proxy
     orchestrations.
+
+    :param pipelines: This is a tuple with the upstream filter pipeline factory
+                      as the first element and the downstream filter pipeline
+                      factory as the second element.
     """
-    def __init__(self, filter_chain_constructor, upstream_target=None):
+    def __init__(self, pipeline_factories, upstream_target=None):
         super(TornadoHttpProxy, self).__init__()
         self.upstream_target = upstream_target
-        self.filter_chain_constructor = filter_chain_constructor
+        self.us_pipeline_factory = pipeline_factories[0]
+        self.ds_pipeline_factory = pipeline_factories[1]
 
     def handle_stream(self, downstream, address):
         ds_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
@@ -218,7 +224,8 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
         upstream = tornado.iostream.IOStream(ds_sock)
 
         connection_handler = ProxyConnection(
-            self.filter_chain_constructor(),
+            self.us_pipeline_factory(),
+            self.ds_pipeline_factory(),
             downstream,
             upstream,
             '{}:{}'.format(
