@@ -28,6 +28,26 @@ located within the project root.
 ./proxy
 ```
 
+## Using Pyrox
+
+### Configuration
+
+See the configuration documentation here: TODO
+
+* [Configuration Example](https://github.com/zinic/pyrox/blob/master/examples/config/pyrox.conf)
+
+### Filters
+
+Filters in Pyrox allow a programmer to act upon a request or a response. They
+may contain custom code and may be loaded from different paths.
+
+#### Examples
+
+* [Simple request handling](https://github.com/zinic/pyrox/blob/master/examples/filter/simple_example.py)
+* [Dynamic routing](https://github.com/zinic/pyrox/blob/master/examples/filter/routing_example.py)
+* [Keystone auth passthrough](https://github.com/zinic/pyrox/blob/master/examples/filter/keystone_meniscus_example.py)
+
+
 ##That Legal Thing...
 
 This software library is released to you under the [MIT License](http://opensource.org/licenses/MIT). See [LICENSE](https://github.com/zinic/pyrox/blob/master/LICENSE) for more information.
