@@ -114,9 +114,6 @@ cdef class HttpEventParser(object):
     cdef http_parser_settings _settings
     cdef object app_data
 
-    def __cinit__(self):
-        self._parser = <http_parser *> malloc(sizeof(http_parser))
-
     def __init__(self, object delegate, kind=_REQUEST_PARSER):
         # set parser type
         if kind == _REQUEST_PARSER:
@@ -127,8 +124,9 @@ cdef class HttpEventParser(object):
             raise Exception('Kind must be 0 for requests or 1 for responses')
 
         # initialize parser
-        self.app_data = ParserData(delegate)
+        self._parser = <http_parser *> malloc(sizeof(http_parser))
         http_parser_init(self._parser, parser_type)
+        self.app_data = ParserData(delegate)
         self._parser.app_data = <void *>self.app_data
 
         # set callbacks
@@ -153,6 +151,8 @@ cdef class HttpEventParser(object):
     def execute(self, char *data):
         cdef int retval
         try:
+            if self._parser == NULL:
+                raise Exception('Parser destroyed or not initialized!')
             retval = http_parser_exec(
                 self._parser, &self._settings, data, strlen(data))
             if retval:

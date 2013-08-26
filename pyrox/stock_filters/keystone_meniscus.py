@@ -5,6 +5,23 @@ from pyrox.http.filtering import HttpFilter, reject, pass_event
 
 """
 This is a very rough example of what an authentication function might look like
+
+Configuration Example
+---------------------
+
+[keystone_meniscus]
+MENISCUS_SERVICE = user
+MENISCUS_PASSWORD = password
+MENISCUS_AUTH_URL = http://127.0.0.1:35357/v2.0
+MENISCUS_TENANT = tenant
+
+[keystone_meniscus_ftest]
+username = user
+password = password
+tenant_name = tenant
+auth_url = http://127.0.0.1:35357/v2.0
+host = http://127.0.0.1
+tenant_id = 1234567
 """
 
 _MENISCUS_CONFIG_KEY = 'keystone_meniscus'

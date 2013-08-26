@@ -48,6 +48,14 @@ class HttpMessage(object):
             self._headers[nameval] = header
         return header
 
+    def replace_header(self, name):
+        """
+        Returns a new header with a field set to name. If the header exists
+        then the header is removed from the request first.
+        """
+        self.remove_header(name)
+        return self.header(name)
+
     def get_header(self, name):
         """
         Returns the header that matches the name via case-insensitive matching.

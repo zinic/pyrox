@@ -6,6 +6,7 @@ import tornado.process
 import tornado.iostream as iostream
 import tornado.tcpserver as tcpserver
 
+from .routing import RoutingHandler
 from pyrox.log import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
@@ -37,11 +38,9 @@ class ProxyHandler(ParserDelegate):
 
 def write(stream, bytes, is_chunked):
     if is_chunked:
-        chunk = bytearray()
-        hex_len = hex(length)[2:]
-
         # Format and write this chunk
-        chunk.extend(hex_len)
+        chunk = bytearray()
+        chunk.extend(hex(length)[2:])
         chunk.extend('\r\n')
         chunk.extend(bytes)
         chunk.extend('\r\n')
@@ -74,13 +73,7 @@ class DownstreamHandler(ProxyHandler):
         self.request.version = '{}.{}'.format(major, minor)
 
     def on_header_value(self, value):
-        # Special case for host
-        if is_host(value):
-            header = self.request.header(self.current_header_field)
-            header.values.append(self.upstream_host)
-        else:
-            header = self.request.header(self.current_header_field)
-            header.values.append(value)
+        self.request.header(self.current_header_field).values.append(value)
 
     def on_headers_complete(self):
         # Execute against the pipeline
@@ -188,29 +181,74 @@ class UpstreamHandler(ProxyHandler):
             self.upstream.close()
 
 
+class ConnectionTracker(object):
+
+    def __init__(self, on_live_cb, pipe_broken_cb):
+        self._streams = dict()
+        self._target_in_use = None
+        self._on_live_cb = on_live_cb
+        self._pipe_broken_cb = pipe_broken_cb
+
+    def destroy(self):
+        for stream in self._streams.values():
+            if not stream.closed():
+                stream.close()
+
+    def connect(self, target):
+        self._target_in_use = target
+        live_stream = self._streams.get(target)
+
+        if live_stream:
+            # Make the cb ourselves since the socket's already connected
+            self._on_live_cb(live_stream)
+        else:
+            self._new_connection(target)
+
+    def _new_connection(self, target):
+        # Set up our upstream socket
+        us_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+        us_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        us_sock.setblocking(0)
+
+        # Create and bind the IOStream
+        live_stream = tornado.iostream.IOStream(us_sock)
+        self._streams[target] = live_stream
+
+        def on_close():
+            if self._target_in_use == target:
+                self._pipe_broken_cb()
+            del self._streams[target]
+        live_stream.set_close_callback(on_close)
+
+        def on_connect():
+            self._on_live_cb(live_stream)
+        live_stream.connect(target, on_connect)
+
 
 class ProxyConnection(object):
     """
     A proxy connection manages the lifecycle of the sockets opened during a
     proxied client request against Pyrox.
     """
-    def __init__(self, us_filter_pl, ds_filter_pl, downstream, default_upstream_target):
+    def __init__(self, us_filter_pl, ds_filter_pl, downstream, router):
         self.ds_filter_pl = ds_filter_pl
         self.us_filter_pl = us_filter_pl
-        self.default_upstream_target = default_upstream_target
-        self.hold_downstream = False
-        self.downstream = downstream
-        self.upstream = None
-        self._init_downstream()
+        self.router = router
+        self.upstream_parser = None
+        self.upstream_tracker = ConnectionTracker(
+            self._on_upstream_live,
+            self._on_pipe_broken)
 
-    def _init_downstream(self):
+        # TODO:Review - Is this kind of hold really needed? Hmmm...
+        self.hold_downstream = False
+
+        # Setup all of the wiring for downstream
+        self.downstream = downstream
         self.downstream_handler = DownstreamHandler(
             self.downstream,
             self.ds_filter_pl,
             self.connect_upstream)
         self.downstream_parser = RequestParser(self.downstream_handler)
-
-        # Downstream callbacks
         self.downstream.set_close_callback(self._on_downstream_close)
         self.downstream.read_bytes(
             num_bytes=MAX_READ,
@@ -218,34 +256,40 @@ class ProxyConnection(object):
             streaming_callback=self._on_downstream_read)
 
     def connect_upstream(self, request, route=None):
+        if route:
+            # This does some type checking for routes passed up via filter
+            self.router.set_next(route)
+        upstream_target = self.router.get_next()
+
         # Hold downstream reads
         self.hold_downstream = True
 
-        # Request to proxy upstream
+        # Update the request to proxy upstream and store it
+        request.replace_header('host').values.append(
+            '{}:{}'.format(upstream_target[0], upstream_target[1]))
         self.request = request
+        self.upstream_tracker.connect(upstream_target)
 
-        # Set up our upstream socket
-        us_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-        us_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        us_sock.setblocking(0)
+    def _on_upstream_live(self, upstream):
+        self.upstream_handler = UpstreamHandler(
+            self.downstream,
+            upstream,
+            self.us_filter_pl)
 
-        self.upstream = tornado.iostream.IOStream(us_sock)
-
-        upstream_target = route if route else self.default_upstream_target
-        self.upstream.connect(upstream_target, self.on_upstream_connect)
-
-    def on_upstream_connect(self):
-        # Upstream callbacks
-        self.upstream_handler = UpstreamHandler(self.downstream, self.upstream,
-                self.us_filter_pl)
+        if self.upstream_parser:
+            self.upstream_parser.destroy()
         self.upstream_parser = ResponseParser(self.upstream_handler)
-        self.upstream.set_close_callback(self._on_upstream_close)
-        self.upstream.read_until_close(
-            callback=self._on_upstream_read,
-            streaming_callback=self._on_upstream_read)
 
         # Send the proxied request object
-        self.upstream.write(self.request.to_bytes())
+        upstream.write(self.request.to_bytes())
+
+        # Set the read callback if it's not already reading
+        if not upstream.reading():
+            upstream.read_until_close(
+                callback=self._on_upstream_read,
+                streaming_callback=self._on_upstream_read)
+
+        # Drop the ref to the proxied request head
         self.request = None
 
         # Allow downstream reads again
@@ -257,18 +301,16 @@ class ProxyConnection(object):
                 streaming_callback=self._on_downstream_read)
 
     def _on_downstream_close(self):
-        if self.upstream and not self.upstream.closed():
-            self.upstream.close()
+        self.upstream_tracker.destroy()
         self.downstream_parser.destroy()
 
-    def _on_upstream_close(self):
-        if not self.downstream.closed():
+    def _on_pipe_broken(self):
+        if not self.downstream.closed() and not self.downstream.closed():
             self.downstream.close()
-        self.upstream_parser.destroy()
+        if self.upstream_parser:
+            self.upstream_parser.destroy()
 
     def _on_downstream_read(self, data):
-        print('Read {} bytes from downstream'.format(len(data)))
-
         if len(data) > 0:
             try:
                 self.downstream_parser.execute(data)
@@ -300,9 +342,9 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
                       as the first element and the downstream filter pipeline
                       factory as the second element.
     """
-    def __init__(self, pipeline_factories, default_upstream_targets=None):
+    def __init__(self, pipeline_factories, default_us_targets=None):
         super(TornadoHttpProxy, self).__init__()
-        self.default_upstream_targets = default_upstream_targets
+        self.router = RoutingHandler(default_us_targets)
         self.us_pipeline_factory = pipeline_factories[0]
         self.ds_pipeline_factory = pipeline_factories[1]
 
@@ -311,4 +353,4 @@ class TornadoHttpProxy(tornado.tcpserver.TCPServer):
             self.us_pipeline_factory(),
             self.ds_pipeline_factory(),
             downstream,
-            self.default_upstream_targets)
+            self.router)

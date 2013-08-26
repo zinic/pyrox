@@ -2,6 +2,13 @@ from pyrox.http import HttpResponse
 
 
 """
+Pipeline tuple enumerations
+"""
+UPSTREAM = 0
+DOWNSTREAM = 1
+
+
+"""
 Action enumerations.
 """
 NEXT_FILTER = 0

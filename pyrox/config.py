@@ -11,7 +11,9 @@ _CFG_DEFAULTS = {
     'routing': {
         'upstream_hosts': 'localhost:80'
     },
-    'pipeline': {},
+    'pipeline': {
+        'use_singletons': False
+    },
     'templates': {
         'pyrox_error_sc': 502,
         'rejection_sc': 400
@@ -93,21 +95,28 @@ class ConfigurationObject(object):
     def _has_option(self, option):
         return self._cfg.has_option(self._namespace, option)
 
+    def _get_default(self, option):
+        if option in _CFG_DEFAULTS[self._namespace]:
+            return _CFG_DEFAULTS[self._namespace][option]
+        return None
+
     def _get(self, option):
         if self._has_option(option):
             return self._cfg.get(self._namespace, option)
-        elif option in _CFG_DEFAULTS[self._namespace]:
-            return _CFG_DEFAULTS[self._namespace][option]
         else:
-            return None
+            return self._get_default(option)
+
+    def _getboolean(self, option):
+        if self._has_option(option):
+            return self._cfg.getboolean(self._namespace, option)
+        else:
+            return self._get_default(option)
 
     def _getint(self, option):
         if self._has_option(option):
             return self._cfg.getint(self._namespace, option)
-        elif option in _CFG_DEFAULTS[self._namespace]:
-            return int(_CFG_DEFAULTS[self._namespace][option])
         else:
-            return None
+            return self._get_default(option)
 
 
 class CoreConfiguration(ConfigurationObject):
@@ -219,6 +228,17 @@ class PipelineConfiguration(ConfigurationObject):
     upstream = filter_1, filter_2
     downstream = filter_3
     """
+    @property
+    def use_singletons(self):
+        """
+        Returns a boolean value representing whether or not Pyrox should
+        reuse filter instances for up and downstream aliases. This means,
+        effectively, that a filter specified in both pipelines will
+        maintain its state for the request and response lifecycle. If left
+        unset this option defaults to false.
+        """
+        return self._getboolean('use_singletons')
+
     @property
     def upstream(self):
         """
