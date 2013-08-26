@@ -24,8 +24,22 @@ nosetests
 After building pyrox you should be able to run it with the proxy shell script
 located within the project root.
 
-```bash
+```
 ./proxy
+
+usage: proxy [-h] [-c [OTHER_CFG]] [-p [PLUGIN_PATHS]] start
+
+Pyrox, the fast Python HTTP middleware server.
+
+positional arguments:
+  start              Starts the daemon.
+
+optional arguments:
+  -h, --help         show this help message and exit
+  -c [OTHER_CFG]     Sets the configuration file to load on startup. If unset
+                     this option defaults to /etc/pyrox/pyrox.conf
+  -p [PLUGIN_PATHS]  "/" character separated string of paths to import from
+                     when loading plugins.
 ```
 
 ## Using Pyrox
