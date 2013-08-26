@@ -1,7 +1,7 @@
 from ConfigParser import ConfigParser
 from keystoneclient.v2_0 import client
 
-from pyrox.http.filtering import HttpFilter, reject, pass_event
+import pyrox.http.filtering as filtering
 
 """
 This is a very rough example of what an authentication function might look like
@@ -45,13 +45,13 @@ def try_authentication(tenant_id, token):
 
     try:
         if keystone.authenticate(token=token, tenant_id=tenant_id):
-            return pass_event()
+            return filtering.pass_event()
     except Exception as ex:
         # Safer default is to reject in case of error
-        return reject()
+        return filtering.reject()
 
 
-class MeniscusKeystoneFilter(HttpFilter):
+class MeniscusKeystoneFilter(filtering.HttpFilter):
 
     def on_request(self, request_message):
         tenant_id = request_message.url.split("/")[-1]
@@ -59,4 +59,4 @@ class MeniscusKeystoneFilter(HttpFilter):
 
         if auth_header:
             return try_authentication(tenant_id, auth_header.values[0])
-        return reject()
+        return filtering.reject()

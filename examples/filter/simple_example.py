@@ -1,7 +1,7 @@
-from pyrox.http.filtering import HttpFilter, reject, pass_event
+import pyrox.http.filtering as filtering
 
 
-class SimpleFilter(HttpFilter):
+class SimpleFilter(filtering.HttpFilter):
     """
     This is an example of a simple filter that simply prints out the
     user-agent value from the header
@@ -12,6 +12,6 @@ class SimpleFilter(HttpFilter):
         # If not, then reject
         if user_agent_header and len(user_agent_header.values) > 0:
             print(user_agent_header.values[0])
-            return pass_event()
+            return filtering.pass_event()
         else:
-            return reject()
+            return filtering.reject()

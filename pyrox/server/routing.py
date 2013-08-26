@@ -10,7 +10,7 @@ class RoutingHandler(object):
             if isinstance(next_route, str):
                 if ':' in next_route:
                     split_route = next_route.split(':')
-                    self._next_route = (split_route[0], split_route[1])
+                    self._next_route = (split_route[0], int(split_route[1]))
                 else:
                     self._next_route = (next_route, 80)
             elif isinstance(next_route, tuple) and len(next_route) == 2:

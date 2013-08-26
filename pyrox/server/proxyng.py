@@ -10,11 +10,10 @@ from .routing import RoutingHandler
 from pyrox.log import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
-from pyrox.http.model_util import is_host
 
 _LOG = get_logger(__name__)
 
-
+# Read 1k at a time
 MAX_READ = 1024
 
 
@@ -25,7 +24,6 @@ class ProxyHandler(ParserDelegate):
 
     - Handling of header field names.
     - Tracking rejection of message sessions.
-    - Streaming of the request/response bodies.
     """
     def __init__(self, filter_pl):
         self.filter_pl = filter_pl

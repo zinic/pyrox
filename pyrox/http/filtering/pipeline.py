@@ -1,13 +1,5 @@
 from pyrox.http import HttpResponse
 
-
-"""
-Pipeline tuple enumerations
-"""
-UPSTREAM = 0
-DOWNSTREAM = 1
-
-
 """
 Action enumerations.
 """
@@ -46,6 +38,79 @@ class FilterAction(object):
 
     def is_routing(self):
         return self.kind == ROUTE
+
+
+class HttpFilter(object):
+
+    def on_request(self, request_message):
+        """
+        on_request will accept an HttpRequest object and implement
+        the logic that will define the FilterActions to be applied
+        to the request
+        """
+        return pass_event()
+
+    def on_response(self, response_message):
+        """
+        on_response will accept an HttpResponse object and implement
+        the logic that will define the FilterActions to be applied
+        to the request
+        """
+        return pass_event()
+
+
+"""
+Default return object. This should be configurable.
+"""
+_DEFAULT_REJECT_RESP = HttpResponse()
+_DEFAULT_REJECT_RESP.version = b'1.1'
+_DEFAULT_REJECT_RESP.status_code = 400
+_DEFAULT_REJECT_RESP.header('Content-Length').values.append('0')
+
+"""
+Default filter action singletons.
+"""
+_DEFAULT_PASS_ACTION = FilterAction(NEXT_FILTER)
+_DEFAULT_CONSUME_ACTION = FilterAction(CONSUME)
+
+
+def consume():
+    """
+    Consumes the event and does not allow any further downstream filters to
+    see it. This effectively halts execution of the filter chain but leaves the
+    request to pass through the proxy.
+    """
+    return _DEFAULT_CONSUME_ACTION
+
+
+def reject(response=None):
+    """
+    Rejects the request that this event is related to. Rejection may happen
+    during on_request and on_response. The associated response parameter
+    becomes the response the client should expect to see. If a response
+    parameter is not provided then the function will default to the configured
+    default response.
+    """
+    return FilterAction(REJECT, response) if response\
+        else FilterAction(REJECT, _DEFAULT_REJECT_RESP)
+
+
+def route(upstream_target):
+    """
+    Routes the request that this event is related to. Usage of this method will
+    halt execution of the filter pipeline and begin streaming the request to
+    the specified upstream target. This method is invalid for handling an
+    upstream response.
+    """
+    return FilterAction(ROUTE, upstream_target)
+
+
+def pass_event():
+    """
+    Passes the current http event down the filter chain. This allows for
+    downstream filters a chance to process the event.
+    """
+    return _DEFAULT_PASS_ACTION
 
 
 class HttpFilterPipeline(object):
@@ -99,73 +164,3 @@ class HttpFilterPipeline(object):
                     break
 
         return last_action
-
-
-class HttpFilter(object):
-
-    def on_request(self, request_message):
-        """
-        on_request will accept an HttpRequest object and implement
-        the logic that will define the FilterActions to be applied
-        to the request
-        """
-        return pass_event()
-
-    def on_response(self, response_message):
-        """
-        on_response will accept an HttpResponse object and implement
-        the logic that will define the FilterActions to be applied
-        to the request
-        """
-        return pass_event()
-
-"""
-Default return object. This should be configurable.
-"""
-_DEFAULT_REJECT_RESP = HttpResponse()
-_DEFAULT_REJECT_RESP.version = b'1.1'
-_DEFAULT_REJECT_RESP.status_code = 400
-_DEFAULT_REJECT_RESP.header('Content-Length').values.append('0')
-
-"""
-Default filter action singletons.
-"""
-_DEFAULT_PASS_ACTION = FilterAction(NEXT_FILTER)
-_DEFAULT_CONSUME_ACTION = FilterAction(CONSUME)
-
-
-def consume():
-    """
-    Consumes the event and does not allow any further downstream filters to
-    see it. This effectively halts execution of the filter chain but leaves the
-    request to pass through the proxy.
-    """
-    return _DEFAULT_CONSUME_ACTION
-
-
-def reject(response=None):
-    """
-    Rejects the request that this event is related to. Rejection may happen
-    during on_request and on_response. The associated response parameter
-    becomes the response the client should expect to see. If a response
-    parameter is not provided then the function will default to the configured
-    default response.
-    """
-    return FilterAction(REJECT, response) if response\
-        else FilterAction(REJECT, _DEFAULT_REJECT_RESP)
-
-def route(upstream_target):
-    """
-    Routes the request that this event is related to. Usage of this method will
-    halt execution of the filter pipeline and begin streaming the request to
-    the specified upstream target. This method is invalid for handling an
-    upstream response.
-    """
-    return FilterAction(ROUTE, upstream_target)
-
-def pass_event():
-    """
-    Passes the current http event down the filter chain. This allows for
-    downstream filters a chance to process the event.
-    """
-    return _DEFAULT_PASS_ACTION

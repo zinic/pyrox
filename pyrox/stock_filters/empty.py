@@ -1,5 +1,7 @@
-from pyrox.http.filtering import HttpFilter
+import pyrox.http.filtering as filtering
 
 
-class EmptyFilter(HttpFilter):
-    pass
+class EmptyFilter(filtering.HttpFilter):
+
+    def on_request(self, request_message):
+        return filtering.route('google.com:80')

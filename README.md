@@ -8,7 +8,7 @@ The fast Python HTTP middleware server
 
 ## Building Pyrox
 
-Building pyrox requires a few dependencies. The cython dependency has been
+Building pyrox requires only a few dependencies. The cython dependency has been
 stored in [tools/dev-requires](https://github.com/zinic/pyrox/blob/master/tools/dev-requires)
 in the case where the software is being installed as a pre-built package. For
 development use cases, installing cython is required.

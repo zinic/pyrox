@@ -88,6 +88,7 @@ def _build_plfactories(config):
         _resolve_filter_classes(config.pipeline.downstream))
     return (upstream, downstream)
 
+
 def start_pyrox(other_cfg=None):
     config = load_config(other_cfg) if other_cfg else load_config()
 

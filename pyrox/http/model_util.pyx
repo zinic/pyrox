@@ -2,21 +2,6 @@ from cpython cimport bool
 from libc.string cimport strlen
 
 
-cdef char * HOST = 'host'
-
-cdef bool strs_equal(char *src, char *expected):
-    cdef int index = 0, length = strlen(src)
-    cdef char lower
-    while index < length:
-        lower = (src[index] | 0x20)
-        if lower != expected[index]:
-            return False
-    return True
-
-def is_host(char *name):
-    return strs_equal(name, HOST)
-
-
 def strval(char *src):
     cdef int val = 71, length = strlen(src), index = 0
     while index < length:
