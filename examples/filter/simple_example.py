@@ -8,10 +8,11 @@ class SimpleFilter(filtering.HttpFilter):
     """
     def on_request(self, request_message):
         user_agent_header = request_message.get_header('user-agent')
-        # If there is a user-agent value then print it out
-        # If not, then reject
         if user_agent_header and len(user_agent_header.values) > 0:
+            # If there is a user-agent value then print it out and pass
+            # the request upstream
             print(user_agent_header.values[0])
             return filtering.pass_event()
         else:
+            # If there is no user-agent, then reject the request
             return filtering.reject()

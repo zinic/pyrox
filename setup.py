@@ -72,7 +72,7 @@ ext_modules = package_c()
 
 setup(
     name='pyrox',
-    version='0.0.1',
+    version='0.2.0',
     description='The high-speed HTTP middleware proxy for Python',
     author='John Hopper',
     author_email='john.hopper@jpserver.net',
