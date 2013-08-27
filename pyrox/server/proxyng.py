@@ -17,24 +17,7 @@ _LOG = get_logger(__name__)
 MAX_READ = 1024
 
 
-class ProxyHandler(ParserDelegate):
-    """
-    Common class for the stream handlers. This parent class manages the
-    following:
-
-    - Handling of header field names.
-    - Tracking rejection of message sessions.
-    """
-    def __init__(self, filter_pl):
-        self.filter_pl = filter_pl
-        self.current_header_field = None
-        self.rejected = False
-
-    def on_header_field(self, field):
-        self.current_header_field = field
-
-
-def write(stream, bytes, is_chunked):
+def _write_to_stream(stream, bytes, is_chunked):
     if is_chunked:
         # Format and write this chunk
         chunk = bytearray()
@@ -47,6 +30,32 @@ def write(stream, bytes, is_chunked):
         stream.write(bytes)
 
 
+
+class ProxyHandler(ParserDelegate):
+    """
+    Common class for the stream handlers. This parent class manages the
+    following:
+
+    - Handling of header field names.
+    - Tracking rejection of message sessions.
+    """
+    def __init__(self, filter_pl, http_msg):
+        self.filter_pl = filter_pl
+        self.http_msg = http_msg
+        self.current_header_field = None
+        self.rejected = False
+
+    def on_http_version(self, major, minor):
+        self.http_msg.version = '{}.{}'.format(major, minor)
+
+    def on_header_field(self, field):
+        self.current_header_field = field
+
+    def on_header_value(self, value):
+        header = self.http_msg.header(self.current_header_field)
+        header.values.append(value)
+
+
 class DownstreamHandler(ProxyHandler):
     """
     This proxy handler manages data coming from downstream of the proxy.
@@ -54,28 +63,21 @@ class DownstreamHandler(ProxyHandler):
     proxy.
     """
     def __init__(self, downstream, filter_pl, connect_upstream):
-        super(DownstreamHandler, self).__init__(filter_pl)
-        self.request = HttpRequest()
+        super(DownstreamHandler, self).__init__(filter_pl, HttpRequest())
         self.downstream = downstream
         self.upstream = None
         self.body_fragment = None
         self.connect_upstream = connect_upstream
 
     def on_req_method(self, method):
-        self.request.method = method
+        self.http_msg.method = method
 
     def on_req_path(self, url):
-        self.request.url = url
-
-    def on_http_version(self, major, minor):
-        self.request.version = '{}.{}'.format(major, minor)
-
-    def on_header_value(self, value):
-        self.request.header(self.current_header_field).values.append(value)
+        self.http_msg.url = url
 
     def on_headers_complete(self):
         # Execute against the pipeline
-        action = self.filter_pl.on_request(self.request)
+        action = self.filter_pl.on_request(self.http_msg)
 
         # If we're rejecting then we're not going to connect to upstream
         if action.is_rejecting():
@@ -84,9 +86,9 @@ class DownstreamHandler(ProxyHandler):
         else:
             # We're routing to upstream; we need to know where to go
             if action.is_routing():
-                self.connect_upstream(self.request, action.payload)
+                self.connect_upstream(self.http_msg, action.payload)
             else:
-                self.connect_upstream(self.request)
+                self.connect_upstream(self.http_msg)
 
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
@@ -100,7 +102,7 @@ class DownstreamHandler(ProxyHandler):
             if self.body_fragment:
                 bytes = self.body_fragment.extend(bytes)
                 self.body_fragment = None
-            write(self.upstream, bytes, is_chunked)
+            _write_to_stream(self.upstream, bytes, is_chunked)
 
     def on_message_complete(self, is_chunked, should_keep_alive):
         if self.rejected:
@@ -129,33 +131,26 @@ class UpstreamHandler(ProxyHandler):
     proxy.
     """
     def __init__(self, downstream, upstream, filter_pl):
-        super(UpstreamHandler, self).__init__(filter_pl)
+        super(UpstreamHandler, self).__init__(filter_pl, HttpResponse())
         self.downstream = downstream
         self.upstream = upstream
 
-    def on_http_version(self, major, minor):
-        self.response = HttpResponse()
-        self.response.version = '{}.{}'.format(major, minor)
-
     def on_status(self, status_code):
-        self.response.status_code = str(status_code)
-
-    def on_header_value(self, value):
-        self.response.header(self.current_header_field).values.append(value)
+        self.http_msg.status_code = str(status_code)
 
     def on_headers_complete(self):
-        action = self.filter_pl.on_response(self.response)
+        action = self.filter_pl.on_response(self.http_msg)
         if action.is_rejecting():
             self.rejected = True
             self.response = action.response
         else:
-            self.downstream.write(self.response.to_bytes())
+            self.downstream.write(self.http_msg.to_bytes())
 
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
         if self.rejected:
             return
-        write(self.downstream, bytes, is_chunked)
+        _write_to_stream(self.downstream, bytes, is_chunked)
 
     def on_message_complete(self, is_chunked, should_keep_alive):
         if self.rejected:
@@ -163,8 +158,8 @@ class UpstreamHandler(ProxyHandler):
             # we have to commit the head here.
             if should_keep_alive == 0:
                 self.downstream.write(
-                    self.response.to_bytes(),
-                    callback=self.upstream.close)
+                    self.http_msg.to_bytes(),
+                    callback=self.downstream.close)
             else:
                 self.downstream.write(self.response.to_bytes())
         elif is_chunked != 0:
