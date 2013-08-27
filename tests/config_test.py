@@ -6,7 +6,7 @@ from pyrox.config import load_config
 class WhenManipulatingHeaders(unittest.TestCase):
 
     def setUp(self):
-        self.cfg = load_config('./etc/pyrox/pyrox.conf')
+        self.cfg = load_config('./examples/config/pyrox.conf')
 
     def test_defaults(self):
         self.assertIsNotNone(self.cfg)
