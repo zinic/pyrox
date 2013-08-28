@@ -19,7 +19,6 @@ typedef struct pbuffer pbuffer;
 typedef struct http_parser http_parser;
 typedef struct http_parser_settings http_parser_settings;
 
-typedef int (*http_body_cb) (http_parser*, const char *at, size_t offset, size_t length);
 typedef int (*http_data_cb) (http_parser*, const char *at, size_t length);
 typedef int (*http_cb) (http_parser*);
 
@@ -74,7 +73,7 @@ struct http_parser_settings {
     http_data_cb      on_header_field;
     http_data_cb      on_header_value;
     http_cb           on_headers_complete;
-    http_body_cb      on_body;
+    http_data_cb      on_body;
     http_cb           on_message_complete;
 };
 
