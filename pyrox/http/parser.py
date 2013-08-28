@@ -1,6 +1,9 @@
 import os
 from cffi import FFI
 
+_REQUEST_PARSER = 0
+_RESPONSE_PARSER = 1
+
 ffi = FFI()
 ffi.cdef("""
 // Type defs
@@ -90,7 +93,8 @@ struct http_parser {
 void http_parser_init(http_parser *parser, enum http_parser_type parser_type);
 void free_http_parser(http_parser *parser);
 
-int http_parser_exec(http_parser *parser, const http_parser_settings *settings, const char *data, size_t len);
+int http_parser_exec(http_parser *parser,
+    const http_parser_settings *settings, const char *data, size_t len);
 int http_should_keep_alive(const http_parser *parser);
 int http_transfer_encoding_chunked(const http_parser *parser);
 """)
@@ -103,11 +107,9 @@ lib = ffi.verify(
     include_dirs=['./include'])
 
 
-_REQUEST_PARSER = 0
-_RESPONSE_PARSER = 1
-
 def RequestParser(parser_delegate):
     return HttpEventParser(parser_delegate, _REQUEST_PARSER)
+
 
 def ResponseParser(parser_delegate):
     return HttpEventParser(parser_delegate, _RESPONSE_PARSER)
@@ -120,6 +122,7 @@ def on_req_method(parser, at, length):
     app_data.delegate.on_req_method(method_str)
     return 0
 
+
 @ffi.callback("int (http_parser *parser, const char *at, size_t len)")
 def on_req_path(parser, at, length):
     app_data = ffi.from_handle(parser.app_data)
@@ -127,17 +130,20 @@ def on_req_path(parser, at, length):
     app_data.delegate.on_req_path(req_path_str)
     return 0
 
+
 @ffi.callback("int (http_parser *parser)")
 def on_status(parser):
     app_data = ffi.from_handle(parser.app_data)
     app_data.delegate.on_status(parser.status_code)
     return 0
 
+
 @ffi.callback("int (http_parser *parser)", error=-1)
 def on_http_version(parser):
     app_data = ffi.from_handle(parser.app_data)
     app_data.delegate.on_http_version(parser.http_major, parser.http_minor)
     return 0
+
 
 @ffi.callback("int (http_parser *parser, const char *at, size_t len)")
 def on_header_field(parser, at, length):
@@ -146,6 +152,7 @@ def on_header_field(parser, at, length):
     app_data.delegate.on_header_field(header_field)
     return 0
 
+
 @ffi.callback("int (http_parser *parser, const char *at, size_t len)")
 def on_header_value(parser, at, length):
     app_data = ffi.from_handle(parser.app_data)
@@ -153,11 +160,13 @@ def on_header_value(parser, at, length):
     app_data.delegate.on_header_value(header_value)
     return 0
 
+
 @ffi.callback("int (http_parser *parser)")
 def on_headers_complete(parser):
     app_data = ffi.from_handle(parser.app_data)
     app_data.delegate.on_headers_complete()
     return 0
+
 
 @ffi.callback("int (http_parser *parser, const char *at, size_t len)")
 def on_body(parser, at, length):
@@ -168,6 +177,7 @@ def on_body(parser, at, length):
         length,
         lib.http_transfer_encoding_chunked(parser))
     return 0
+
 
 @ffi.callback("int (http_parser *parser)")
 def on_message_complete(parser):
@@ -245,13 +255,13 @@ class HttpEventParser(object):
         self._settings.on_message_complete = on_message_complete
 
     def destroy(self):
-        if self._parser != None:
+        if self._parser is None:
             lib.free_http_parser(self._parser)
             self._parser = None
 
     def execute(self, data):
         try:
-            if self._parser == None:
+            if self._parser is None:
                 raise Exception('Parser destroyed or not initialized!')
             retval = lib.http_parser_exec(
                 self._parser, self._settings, data, len(data))
@@ -259,4 +269,3 @@ class HttpEventParser(object):
                 raise Exception('Failed with errno: {}'.format(retval))
         except Exception as ex:
             raise
-
