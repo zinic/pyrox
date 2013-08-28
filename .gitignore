@@ -14,4 +14,3 @@ pyrox/http/model_util.c
 *.DS_Store*
 nosetests.xml
 */coverage.xml
-__pycache__

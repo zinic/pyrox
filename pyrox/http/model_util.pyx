@@ -1,15 +1,16 @@
-def strval(src):
-    val = 71
-    index = 0
-    length = len(src)
+from cpython cimport bool
+from libc.string cimport strlen
 
+
+def strval(char *src):
+    cdef int val = 71, length = strlen(src), index = 0
     while index < length:
-        val += (ord(src[index]) | 0x20)
+        val += (src[index] | 0x20)
         index += 1
     return val
 
 
-def header_to_bytes(name, values, bytes):
+cdef header_to_bytes(char *name, object values, object bytes):
     bytes.extend(name)
     bytes.extend(b': ')
 
@@ -22,13 +23,13 @@ def header_to_bytes(name, values, bytes):
     bytes.extend(b'\r\n')
 
 
-def headers_to_bytes(headers, bytes):
+cdef headers_to_bytes(object headers, object bytes):
     for header in headers:
         header_to_bytes(header.name, header.values, bytes)
     bytes.extend(b'\r\n')
 
 
-def request_to_bytes(http_request):
+def request_to_bytes(object http_request):
     bytes = bytearray()
     bytes.extend(http_request.method)
     bytes.extend(b' ')
@@ -40,7 +41,7 @@ def request_to_bytes(http_request):
     return str(bytes)
 
 
-def response_to_bytes(http_response):
+def response_to_bytes(object http_response):
     bytes = bytearray()
     bytes.extend(b'HTTP/')
     bytes.extend(http_response.version)

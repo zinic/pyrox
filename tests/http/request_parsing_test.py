@@ -148,15 +148,12 @@ class WhenParsingRequests(unittest.TestCase):
             BODY_SLOT: 2,
             BODY_COMPLETE_SLOT: 1}, self)
 
-# This was broken by CFFI... need to rethink this a bit.
-#
-#    def test_exception_propagation(self):
-#        tracker = TrackingDelegate(ValidatingDelegate(self))
-#        parser = RequestParser(tracker)
-#
-#        with self.assertRaises(Exception):
-#            chunk_message(UNEXPECTED_HEADER_REQUEST, parser)
-#
+    def test_exception_propagation(self):
+        tracker = TrackingDelegate(ValidatingDelegate(self))
+        parser = RequestParser(tracker)
+
+        with self.assertRaises(Exception):
+            chunk_message(UNEXPECTED_HEADER_REQUEST, parser)
 
     def test_reading_chunked_request(self):
         tracker = TrackingDelegate(ValidatingDelegate(self))
