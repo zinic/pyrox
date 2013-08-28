@@ -17,7 +17,7 @@ def performance(duration=10, print_output=True):
     runs = 0
     then = time.time()
     while time.time() - then < duration:
-        parser.execute(NORMAL_REQUEST, len(NORMAL_REQUEST))
+        parser.execute(NORMAL_REQUEST)
         runs += 1
     if print_output:
         print('Ran {} times in {} seconds for {} runs per second.'.format(
