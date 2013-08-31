@@ -1,7 +1,16 @@
+#
+# To run from project root:
+# python -m unittest discover --pattern=simple_ftest.py
+#
+# You can add wildcards in the pattern to run other tests:
+# python -m unittest discover --pattern=*test*.py
+#
 import unittest
+
 import pyrox.http as http
 import pyrox.http.filtering as http_filtering
-from pyrox.stock_filters.simple import SimpleFilter
+
+import pynsive
 
 
 class WhenFuncTestingSimpleFilter(unittest.TestCase):
@@ -10,7 +19,11 @@ class WhenFuncTestingSimpleFilter(unittest.TestCase):
         self.req_message.url = 'http://127.0.0.1'
         self.req_message.method = 'GET'
         self.req_message.version = "1.0"
-        self.simple_filter = SimpleFilter()
+
+        plugin_manager = pynsive.PluginManager()
+        plugin_manager.plug_into('examples/filter')
+        simple_filter_plugin = pynsive.import_module('simple_example')
+        self.simple_filter = simple_filter_plugin.SimpleFilter()
 
     def test_simple_filter_returns_reject_action(self):
         returned_action = self.simple_filter.on_request(self.req_message)

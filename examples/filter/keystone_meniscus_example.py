@@ -26,7 +26,7 @@ tenant_id = 1234567
 
 _MENISCUS_CONFIG_KEY = 'keystone_meniscus'
 config = ConfigParser()
-config.read("/etc/pyrox/pyrox.conf")
+config.read("examples/config/pyrox.conf")
 
 X_AUTH_TOKEN = 'x-auth-token'
 MENISCUS_SERVICE = config.get(_MENISCUS_CONFIG_KEY, 'MENISCUS_SERVICE')

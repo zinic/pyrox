@@ -1,10 +1,18 @@
+#
+# To run from project root:
+# python -m unittest discover --pattern=keystone_meniscus_ftest.py
+#
+# You can add wildcards in the pattern to run other tests:
+# python -m unittest discover --pattern=*test*.py
+#
 from ConfigParser import ConfigParser
 import unittest
 import pyrox.http as http
 import pyrox.http.filtering as http_filtering
 
 from keystoneclient.v2_0 import client
-from pyrox.stock_filters.keystone_meniscus import MeniscusKeystoneFilter
+
+import pynsive
 
 _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
 
@@ -12,7 +20,7 @@ _FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
 class WhenFuncTestingKeystoneMeniscus(unittest.TestCase):
     def setUp(self):
         self.config = ConfigParser()
-        self.config.read("/etc/pyrox/pyrox.conf")
+        self.config.read("examples/config/pyrox.conf")
 
         self.username = self.config.get(_FTEST_CONFIG_KEY, 'username')
         self.password = self.config.get(_FTEST_CONFIG_KEY, 'password')
@@ -21,6 +29,12 @@ class WhenFuncTestingKeystoneMeniscus(unittest.TestCase):
 
         self.host = self.config.get(_FTEST_CONFIG_KEY, 'host')
         self.tenant_id = self.config.get(_FTEST_CONFIG_KEY, 'tenant_id')
+
+        plugin_manager = pynsive.PluginManager()
+        plugin_manager.plug_into('examples/filter')
+        keystone_filter_plugin = pynsive.import_module(
+            'keystone_meniscus_example')
+        self.keystone_filter = keystone_filter_plugin.MeniscusKeystoneFilter()
 
     def test_meniscus_keystone_returns_proxy_action(self):
 
@@ -41,8 +55,7 @@ class WhenFuncTestingKeystoneMeniscus(unittest.TestCase):
         auth_header = req_message.header(name="X-AUTH-TOKEN")
         auth_header.values.append(token)
 
-        meniscus_filter = MeniscusKeystoneFilter()
-        returned_action = meniscus_filter.on_request(req_message)
+        returned_action = self.keystone_filter.on_request(req_message)
         self.assertEqual(returned_action.kind, http_filtering.NEXT_FILTER)
 
     def test_meniscus_keystone_returns_reject_action(self):
@@ -58,8 +71,7 @@ class WhenFuncTestingKeystoneMeniscus(unittest.TestCase):
         auth_header = req_message.header(name="X-AUTH-TOKEN")
         auth_header.values.append('BAD_TOKEN')
 
-        meniscus_filter = MeniscusKeystoneFilter()
-        returned_action = meniscus_filter.on_request(req_message)
+        returned_action = self.keystone_filter.on_request(req_message)
         self.assertEqual(returned_action.kind, http_filtering.REJECT)
 
 
