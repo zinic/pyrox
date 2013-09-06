@@ -5,7 +5,7 @@ import argparse
 from pyrox.log import get_logger
 import pyrox.server as server
 
-from pyrox.http.filtering import HttpFilterPipeline
+from pyrox.filtering import HttpFilterPipeline
 #from pyrox.stock_filters.simple import SimpleFilter
 
 

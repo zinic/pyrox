@@ -8,7 +8,7 @@
 from ConfigParser import ConfigParser
 import unittest
 import pyrox.http as http
-import pyrox.http.filtering as http_filtering
+import pyrox.filtering as http_filtering
 
 from keystoneclient.v2_0 import client
 

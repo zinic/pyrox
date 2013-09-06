@@ -1,4 +1,8 @@
 from pyrox.http import HttpResponse
+from pyrox.log import get_logger
+
+_LOG = get_logger(__name__)
+
 
 """
 Action enumerations.
@@ -39,6 +43,19 @@ class FilterAction(object):
     def is_routing(self):
         return self.kind == ROUTE
 
+    def __str__(self):
+        if self.kind == NEXT_FILTER:
+            action_kind = 'NEXT_FILTER'
+        elif self.kind == CONSUME:
+            action_kind = 'CONSUME'
+        elif self.kind == REJECT:
+            action_kind = 'REJECT'
+        elif self.kind == ROUTE:
+            action_kind = 'ROUTE'
+
+        return 'Action({}) - Is breaking flow: {}'.format(
+            action_kind, self.breaks_pipeline())
+
 
 class HttpFilter(object):
 
@@ -64,7 +81,7 @@ Default return object. This should be configurable.
 """
 _DEFAULT_REJECT_RESP = HttpResponse()
 _DEFAULT_REJECT_RESP.version = b'1.1'
-_DEFAULT_REJECT_RESP.status_code = 400
+_DEFAULT_REJECT_RESP.status = '400 Bad Request'
 _DEFAULT_REJECT_RESP.header('Content-Length').values.append('0')
 
 """
@@ -137,10 +154,12 @@ class HttpFilterPipeline(object):
         last_action = pass_event()
 
         for http_filter in self.chain:
+            print('Passing to filter: {}'.format(http_filter))
+
             try:
                 action = http_filter.on_request(request)
             except Exception as ex:
-                # TODO:Implement - Handle this error
+                _LOG.exception(ex)
                 action = reject()
             if (action):
                 last_action = action
@@ -156,7 +175,7 @@ class HttpFilterPipeline(object):
             try:
                 action = http_filter.on_response(response)
             except Exception as ex:
-                # TODO:Implement - Handle this error
+                _LOG.exception(ex)
                 action = reject()
             if action:
                 last_action = action

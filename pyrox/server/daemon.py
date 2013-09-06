@@ -1,5 +1,6 @@
 import signal
 import pynsive
+import inspect
 
 from pyrox.log import get_logger, get_log_manager
 from pyrox.config import load_config
@@ -9,6 +10,18 @@ from pyrox.server.proxyng import TornadoHttpProxy
 
 
 _LOG = get_logger(__name__)
+
+
+class FunctionWrapper(object):
+
+    def __init__(self, func):
+        self._func = func
+
+    def on_request(self, request):
+        return self._func(request)
+
+    def on_response(self, response):
+        return self._func(response)
 
 
 class ConfigurationError(Exception):
@@ -28,6 +41,7 @@ def stop(signum, frame):
 
 def _resolve_filter_classes(cls_list):
     filter_cls_list = list()
+
     # Gather the classes listed in the order they're listed
     for cdef in cls_list:
         # If there's a complex module path, process the ends of it
@@ -35,9 +49,17 @@ def _resolve_filter_classes(cls_list):
             raise ImportError('Bad filter class: {}'.format(cdef))
 
         module = pynsive.import_module(cdef[:cdef.rfind('.')])
+
         try:
             cls = getattr(module, cdef[cdef.rfind('.') + 1:])
-            filter_cls_list.append(cls)
+            if inspect.isclass(cls):
+                filter_cls_list.append(cls)
+            elif inspect.isfunction(cls):
+                def create():
+                    return FunctionWrapper(cls)
+                filter_cls_list.append(create)
+            else:
+                raise TypeError('Type of a filter must be a function or a class')
         except AttributeError as ae:
             raise ImportError('Unable to import: {}'.format(cdef))
     return filter_cls_list

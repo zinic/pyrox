@@ -93,6 +93,7 @@ class DownstreamHandler(ProxyHandler):
     def on_headers_complete(self):
         # Execute against the pipeline
         action = self._filter_pl.on_request(self._http_msg)
+        print('Got downstream action -> {}'.format(action))
 
         # If we're rejecting then we're not going to connect to upstream
         if action.is_rejecting():
@@ -140,13 +141,14 @@ class UpstreamHandler(ProxyHandler):
         self._upstream = upstream
 
     def on_status(self, status_code):
-        self._http_msg.status_code = str(status_code)
+        self._http_msg.status = str(status_code)
 
     def on_headers_complete(self):
         action = self._filter_pl.on_response(self._http_msg)
+        print('Got upstream action -> {}'.format(action))
         if action.is_rejecting():
             self._rejected = True
-            self._response = action.response
+            self._response = action.payload
         else:
             self._downstream.write(self._http_msg.to_bytes())
 

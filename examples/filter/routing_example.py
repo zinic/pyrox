@@ -1,4 +1,4 @@
-import pyrox.http.filtering as filtering
+import pyrox.filtering as filtering
 
 
 class RoutingFilter(filtering.HttpFilter):

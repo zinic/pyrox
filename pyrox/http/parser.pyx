@@ -2,8 +2,6 @@ from libc.string cimport strlen
 from libc.stdlib cimport malloc, free
 from cpython cimport bool, PyBytes_FromStringAndSize, PyBytes_FromString
 
-cimport stdint
-
 import traceback
 
 _REQUEST_PARSER = 0

@@ -2,9 +2,14 @@ from pyrox.http import HttpResponse
 from pyrox.filtering import reject, pass_event
 
 
+"""
+Still playing with this - don't use this.
+"""
+
+
 def start_response(status, headers):
     resp = HttpResponse()
-    resp.status_code = status
+    resp.status = status
 
     [resp.header(h).values.append(v) for h, v in headers]
 

@@ -26,8 +26,8 @@ class HttpMessage(object):
         version     A bytearray or string value representing the major-minor
                     version of the HttpMessage.
     """
-    def __init__(self):
-        self.version = None
+    def __init__(self, version='1.1'):
+        self.version = version
         self._headers = dict()
 
     @property
@@ -103,11 +103,13 @@ class HttpResponse(HttpMessage):
     to a HttpFilter.
 
     Attributes:
-        status_code      An integer representing the response's status code
+        status      A string representing the response's status code and
+                    potentially its human readable component delimited by
+                    a single space.
     """
     def __init__(self):
         super(HttpResponse, self).__init__()
-        self.status_code = None
+        self.status = None
 
     def to_bytes(self):
         return response_to_bytes(self)
