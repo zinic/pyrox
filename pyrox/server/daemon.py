@@ -3,7 +3,7 @@ import pynsive
 
 from pyrox.log import get_logger, get_log_manager
 from pyrox.config import load_config
-from pyrox.http.filtering import HttpFilterPipeline
+from pyrox.filtering import HttpFilterPipeline
 from tornado.ioloop import IOLoop
 from pyrox.server.proxyng import TornadoHttpProxy
 

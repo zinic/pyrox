@@ -1,4 +1,4 @@
-from pyrox.http.model_util import request_to_bytes, response_to_bytes, strval
+from .model_util import request_to_bytes, response_to_bytes, strval
 
 
 _EMPTY_HEADER_VALUES = ()

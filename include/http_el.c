@@ -145,7 +145,7 @@ static const uint8_t normal_url_char[32] = {
 
 // States
 
-enum http_el_state {
+typedef enum {
     // Request states
     s_req_start,
     s_req_method,
@@ -172,9 +172,9 @@ enum http_el_state {
     s_resp_start,
     s_resp_status,
     s_resp_rphrase
-};
+} http_el_state;
 
-enum header_state {
+typedef enum {
     // Header states
     h_general,
     h_content_length,
@@ -192,10 +192,8 @@ enum header_state {
     h_matching_connection,
     h_matching_connection_keep_alive,
     h_matching_connection_close
-};
+} header_state;
 
-typedef enum http_el_state http_el_state;
-typedef enum header_state header_state;
 
 
 // Supporting functions
@@ -370,9 +368,6 @@ void set_header_state(http_parser *parser, header_state state) {
 
 
 void reset_http_parser(http_parser *parser) {
-    reset_buffer(parser);
-    set_header_state(parser, h_general);
-
     parser->bytes_read = 0;
     parser->status_code = 0;
     parser->flags = 0;
@@ -380,8 +375,9 @@ void reset_http_parser(http_parser *parser) {
     parser->http_major = 0;
     parser->http_minor = 0;
 
-    set_http_state(
-        parser,
+    reset_buffer(parser);
+    set_header_state(parser, h_general);
+    set_http_state(parser,
         parser->type == HTTP_REQUEST ? s_req_start : s_resp_start);
 }
 
