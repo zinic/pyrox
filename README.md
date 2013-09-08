@@ -1,3 +1,5 @@
+[![Build Status](http://jenkins.projectmeniscus.org/job/Pyrox/badge/icon)](http://jenkins.projectmeniscus.org/job/Pyrox/)
+
 # [Pyrox](http://pyrox-http.org/)
 The fast Python HTTP middleware server
 
