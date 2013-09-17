@@ -14,4 +14,3 @@ def start_response(status, headers):
     [resp.header(h).values.append(v) for h, v in headers]
 
     return reject(resp)
-

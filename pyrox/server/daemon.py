@@ -24,7 +24,7 @@ class FunctionWrapper(object):
         return self._func(response)
 
 
-class ConfigurationError(Exception):
+class ConfigurationError():
 
     def __init__(self, msg):
         self.msg = msg
@@ -59,8 +59,9 @@ def _resolve_filter_classes(cls_list):
                     return FunctionWrapper(cls)
                 filter_cls_list.append(create)
             else:
-                raise TypeError('Type of a filter must be a function or a class')
-        except AttributeError as ae:
+                raise TypeError(
+                    'Type of a filter must be a function or a class')
+        except AttributeError:
             raise ImportError('Unable to import: {}'.format(cdef))
     return filter_cls_list
 
@@ -87,7 +88,7 @@ def _build_singleton_plfactory_closure(filter_classes, filter_instances):
 
 def _build_singleton_plfactories(config):
     all_classes = list()
-    filter_isntances = dict()
+    filter_instances = dict()
 
     # Gather all the classes
     all_classes.extend(_resolve_filter_classes(config.pipeline.upstream))
