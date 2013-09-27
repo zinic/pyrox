@@ -152,11 +152,10 @@ def start_pyrox(other_cfg=None):
     _LOG.info('Pyrox listening on: http://{0}:{1}'.format(
         bind_host[0], bind_host[1]))
 
+    # Take over SIGTERM and SIGINT
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+
     # Start Tornado
     http_proxy.start(config.core.processes)
     IOLoop.instance().start()
-
-
-# Take over SIGTERM and SIGINT
-signal.signal(signal.SIGTERM, stop)
-signal.signal(signal.SIGINT, stop)

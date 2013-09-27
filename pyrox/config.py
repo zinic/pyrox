@@ -40,7 +40,7 @@ def _host_tuple(host_str):
     elif len(parts) == 2:
         return (parts[0], int(parts[1]))
     else:
-        raise Exception('Malformed host: {}'.format(host))
+        raise Exception('Malformed host: {}'.format(host_str))
 
 
 def load_config(location='/etc/pyrox/pyrox.conf'):
@@ -126,7 +126,7 @@ class CoreConfiguration(ConfigurationObject):
     @property
     def processes(self):
         """
-        Returns the number of processess Pyrox should spin up to handle
+        Returns the number of processes Pyrox should spin up to handle
         messages. If unset, this defaults to 1.
 
         Example
@@ -211,8 +211,8 @@ class PipelineConfiguration(ConfigurationObject):
 
     After the filter aliases are specified, they may be then organized in
     comma delimited lists and assigned to either the "upstream" option for
-    filters that should recieve upstream events or the "downstream" option
-    for filters that should recieve downstream events.
+    filters that should receive upstream events or the "downstream" option
+    for filters that should receive downstream events.
 
     In the context of Pyrox, upstream events originate from the requesting
     client also known as the request. Downstream events originate from the
