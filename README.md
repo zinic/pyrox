@@ -27,9 +27,9 @@ After building pyrox you should be able to run it with the proxy shell script
 located within the project root.
 
 ```
-./proxy
+./pyrox_dev.sh
 
-usage: proxy [-h] [-c [OTHER_CFG]] [-p [PLUGIN_PATHS]] start
+usage: pyrox_dev.sh [-h] [-c [OTHER_CFG]] [-p [PLUGIN_PATHS]] start
 
 Pyrox, the fast Python HTTP middleware server.
 
