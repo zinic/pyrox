@@ -1,16 +1,24 @@
+import os
 import sys
+import errno
 import signal
 import pynsive
 import inspect
+import socket
+import multiprocessing
+
+from tornado.ioloop import IOLoop
+from tornado.netutil import bind_sockets
+from tornado.process import cpu_count
 
 from pyrox.log import get_logger, get_log_manager
 from pyrox.config import load_config
 from pyrox.filtering import HttpFilterPipeline
-from tornado.ioloop import IOLoop
 from pyrox.server.proxyng import TornadoHttpProxy
 
 
 _LOG = get_logger(__name__)
+_active_children_pids = list()
 
 
 class FunctionWrapper(object):
@@ -35,12 +43,17 @@ class ConfigurationError():
             self.msg)
 
 
-def _shutdown_loop():
-    IOLoop.instance().stop()
+def shutdown_loop():
+    IOLoop.current().stop()
 
 
-def stop(signum, frame):
-    IOLoop.instance().add_callback_from_signal(_shutdown_loop)
+def stop_child(signum, frame):
+    IOLoop.instance().add_callback_from_signal(shutdown_loop)
+
+
+def stop_parent(signum, frame):
+    for pid in _active_children_pids:
+        os.kill(pid, signal.SIGTERM)
 
 
 def _resolve_filter_classes(cls_list):
@@ -116,12 +129,10 @@ def _build_plfactories(config):
     return (upstream, downstream)
 
 
-def start_pyrox(other_cfg=None):
-    config = load_config(other_cfg) if other_cfg else load_config()
-
-    # Init logging
-    logging_manager = get_log_manager()
-    logging_manager.configure(config)
+def start_proxy(sockets, config):
+    # Take over SIGTERM and SIGINT
+    signal.signal(signal.SIGTERM, stop_child)
+    signal.signal(signal.SIGINT, stop_child)
 
     # Create a PluginManager
     plugin_manager = pynsive.PluginManager()
@@ -142,6 +153,21 @@ def start_pyrox(other_cfg=None):
     http_proxy = TornadoHttpProxy(
         filter_pipeline_factories,
         config.routing.upstream_hosts)
+
+    # Add our sockets for watching
+    http_proxy.add_sockets(sockets)
+
+    # Start tornado
+    IOLoop.current().start()
+
+
+def start_pyrox(other_cfg=None):
+    config = load_config(other_cfg) if other_cfg else load_config()
+
+    # Init logging
+    logging_manager = get_log_manager()
+    logging_manager.configure(config)
+
     _LOG.info('Upstream targets are: {}'.format(
         ['http://{0}:{1}'.format(dst[0], dst[1])
             for dst in config.routing.upstream_hosts]))
@@ -151,15 +177,46 @@ def start_pyrox(other_cfg=None):
     if len(bind_host) != 2:
         raise ConfigurationError('bind_host must have a port specified')
 
-    # Bind the server
-    http_proxy.bind(address=bind_host[0], port=int(bind_host[1]))
+    # Bind the sockets in the main process
+    sockets = bind_sockets(port=bind_host[1], address=bind_host[0])
+
+    # Bind the server port(s)
     _LOG.info('Pyrox listening on: http://{0}:{1}'.format(
         bind_host[0], bind_host[1]))
 
-    # Take over SIGTERM and SIGINT
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-
     # Start Tornado
-    http_proxy.start(config.core.processes)
-    IOLoop.instance().start()
+    num_processess = config.core.processes
+
+    if num_processess <= 0:
+        num_processess = cpu_count()
+
+    global _active_children_pids
+
+    for i in range(num_processess):
+        pid = os.fork()
+        if pid == 0:
+            print('Starting process {}'.format(i))
+            start_proxy(sockets, config)
+            sys.exit(0)
+        else:
+            _active_children_pids.append(pid)
+
+    # Take over SIGTERM and SIGINT
+    signal.signal(signal.SIGTERM, stop_parent)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    while len(_active_children_pids):
+        try:
+            pid, status = os.wait()
+        except OSError as oserr:
+            if oserr.errno != errno.EINTR:
+                _LOG.exception(oserr)
+            continue
+        except Exception as ex:
+            _LOG.exception(ex)
+            continue
+
+        _LOG.info('Child process {} exited with status {}'.format(
+            pid, status))
+        _active_children_pids.remove(pid)
+
