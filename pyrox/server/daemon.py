@@ -163,4 +163,3 @@ def start_pyrox(other_cfg=None):
     # Start Tornado
     http_proxy.start(config.core.processes)
     IOLoop.instance().start()
-
