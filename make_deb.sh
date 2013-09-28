@@ -1,6 +1,6 @@
 #!/bin/sh
 
-PROJECT_NAME="meniscus-portal"
+PROJECT_NAME="pyrox"
 PROJECT_VERSION="$(cat VERSION)"
 
 python build.py meniscus-portal
