@@ -24,7 +24,7 @@ DAEMON_OPTS="${PYROX_SHARE}/bin/main.py start"
 USER=${NAME}
 APPDIR=/var/lib/${NAME}
 
-export PYTHONPATH=${PORTAL_SHARE}/lib/python/:${PYTHONPATH}
+export PYTHONPATH=${PYROX_SHARE}/lib/python/:${PYTHONPATH}
 
 case "$1" in
   start)

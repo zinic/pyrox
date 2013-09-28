@@ -1,6 +1,6 @@
 #!/bin/sh
 
-MAIN_PY=pkg/layout/usr/share/pyrox/main.py
+MAIN_PY=pkg/layout/usr/share/pyrox/bin/main.py
 
 export PYTHONPATH=${PYTHONPATH}:./
 

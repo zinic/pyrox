@@ -1,3 +1,4 @@
+import sys
 import signal
 import pynsive
 import inspect
@@ -37,6 +38,7 @@ class ConfigurationError():
 def stop(signum, frame):
     _LOG.debug('Stop called at frame:\n{}'.format(frame))
     IOLoop.instance().stop()
+    sys.exit(0)
 
 
 def _resolve_filter_classes(cls_list):
