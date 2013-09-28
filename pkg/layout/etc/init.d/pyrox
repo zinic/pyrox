@@ -1,0 +1,52 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          pyrox
+# Required-Start:    $network $remote_fs $syslog
+# Required-Stop:     $network $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Pyrox
+# Description:       Pyrox
+### END INIT INFO
+
+# Author: John Hopper <john.hopper@rackspace.com>
+
+set -e
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+PYROX_SHARE=/usr/share/pyrox
+
+NAME=pyrox
+PIDFILE=/var/run/${NAME}.pid
+DAEMON="/usr/bin/python"
+DAEMON_OPTS="${PYROX_SHARE}/bin/main.py start"
+USER=${NAME}
+APPDIR=/var/lib/${NAME}
+
+export PYTHONPATH=${PORTAL_SHARE}/lib/python/:${PYTHONPATH}
+
+case "$1" in
+  start)
+        echo -n "Starting daemon: "$NAME
+        start-stop-daemon --start --background --chdir $APPDIR --quiet --chuid $USER --make-pidfile --pidfile $PIDFILE --exec $DAEMON -- $DAEMON_OPTS
+        echo "."
+    ;;
+  stop)
+        echo -n "Stopping daemon: "$NAME
+        start-stop-daemon --stop --chdir $APPDIR --quiet --chuid $USER --oknodo --pidfile $PIDFILE
+        echo "."
+    ;;
+  restart)
+        echo -n "Restarting daemon: "$NAME
+        start-stop-daemon --stop --chdir $APPDIR --quiet --chuid $USER --oknodo --retry 30 --pidfile $PIDFILE
+        start-stop-daemon --start --background --chdir $APPDIR --quiet --chuid $USER --make-pidfile --pidfile $PIDFILE --exec $DAEMON -- $DAEMON_OPTS
+        echo "."
+    ;;
+
+  *)
+    echo "Usage: "$1" {start|stop|restart}"
+    exit 1
+esac
+
+exit 0

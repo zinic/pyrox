@@ -1,5 +1,0 @@
-#!/bin/sh
-
-export PYTHONPATH=${PYTHONPATH}:./
-#python -m cProfile -o /tmp/profile.prof pyrox/main.py ${@}
-python pyrox/main.py ${@}

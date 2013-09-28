@@ -1,7 +1,7 @@
 from ConfigParser import ConfigParser
 from keystoneclient.v2_0 import client
 
-import pyrox.http.filtering as filtering
+import pyrox.filtering as filtering
 
 """
 This is a very rough example of what an authentication function might look like

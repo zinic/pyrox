@@ -6,7 +6,6 @@ from pyrox.log import get_logger
 import pyrox.server as server
 
 from pyrox.filtering import HttpFilterPipeline
-#from pyrox.stock_filters.simple import SimpleFilter
 
 
 _LOG = get_logger(__name__)
