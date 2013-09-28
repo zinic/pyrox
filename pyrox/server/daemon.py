@@ -35,10 +35,12 @@ class ConfigurationError():
             self.msg)
 
 
-def stop(signum, frame):
-    _LOG.debug('Stop called at frame:\n{}'.format(frame))
+def _shutdown_loop():
     IOLoop.instance().stop()
-    sys.exit(0)
+
+
+def stop(signum, frame):
+    IOLoop.instance().add_callback_from_signal(_shutdown_loop)
 
 
 def _resolve_filter_classes(cls_list):
