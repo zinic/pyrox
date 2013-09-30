@@ -12,8 +12,9 @@ from tornado.netutil import bind_sockets
 from tornado.process import cpu_count
 
 from pyrox.log import get_logger, get_log_manager
-from pyrox.config import load_config
 from pyrox.filtering import HttpFilterPipeline
+from pyrox.util.config import ConfigurationError
+from pyrox.server.config import load_pyrox_config
 from pyrox.server.proxyng import TornadoHttpProxy
 
 
@@ -33,22 +34,9 @@ class FunctionWrapper(object):
         return self._func(response)
 
 
-class ConfigurationError():
-
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __str__(self):
-        return 'Config error halted daemon start. Reason: {}'.format(
-            self.msg)
-
-
-def shutdown_loop():
-    IOLoop.current().stop()
-
-
 def stop_child(signum, frame):
-    IOLoop.instance().add_callback_from_signal(shutdown_loop)
+    IOLoop.instance().add_callback_from_signal(
+        lambda: IOLoop.current().stop())
 
 
 def stop_parent(signum, frame):
@@ -162,7 +150,7 @@ def start_proxy(sockets, config):
 
 
 def start_pyrox(other_cfg=None):
-    config = load_config(other_cfg) if other_cfg else load_config()
+    config = load_pyrox_config(other_cfg) if other_cfg else load_pyrox_config()
 
     # Init logging
     logging_manager = get_log_manager()

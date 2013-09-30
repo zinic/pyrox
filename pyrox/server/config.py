@@ -1,9 +1,8 @@
-import os.path
+from pyrox.util.config import (load_config, ConfigurationPart,
+                               ConfigurationError)
 
-from ConfigParser import ConfigParser
 
-
-_CFG_DEFAULTS = {
+_DEFAULTS = {
     'core': {
         'processes': 1,
         'bind_host': 'localhost:8080'
@@ -35,91 +34,20 @@ def _split_and_strip(values_str, split_on):
 
 def _host_tuple(host_str):
     parts = host_str.split(':')
+
     if len(parts) == 1:
         return (parts[0], 80)
     elif len(parts) == 2:
         return (parts[0], int(parts[1]))
     else:
-        raise Exception('Malformed host: {}'.format(host_str))
+        raise ConfigurationError('Malformed host: {}'.format(host_str))
 
 
-def load_config(location='/etc/pyrox/pyrox.conf'):
-    if not os.path.isfile(location):
-        raise Exception(
-            'Unable to locate configuration file: {}'.format(location))
-    cfg = ConfigParser()
-    cfg.read(location)
-    return PyroxConfiguration(cfg)
+def load_pyrox_config(location='/etc/pyrox/pyrox.conf'):
+    return load_config('pyrox.server.config', location, _DEFAULTS)
 
 
-class PyroxConfiguration(object):
-    """
-    A Pyrox configuration.
-    """
-    def __init__(self, cfg):
-        self.core = CoreConfiguration(cfg)
-        self.routing = RoutingConfiguration(cfg)
-        self.pipeline = PipelineConfiguration(cfg)
-        self.templates = TemplatesConfiguration(cfg)
-        self.logging = LoggingConfiguration(cfg)
-
-
-class ConfigurationObject(object):
-    """
-    A configuration object is an OO abstraction for a ConfigParser that allows
-    for ease of documentation and usage of configuration options. All
-    subclasses of ConfigurationObject must follow a naming convention. A
-    configuration object subclass must start with the name of its section. This
-    must then be followed by the word "Configuration." This convention results
-    in subclasses with names similar to: CoreConfiguration and
-    LoggingConfiguration.
-
-    A configuration object subclass will have its section set to the lowercase
-    name of the subclass sans the word such that a subclass with the name,
-    "LoggingConfiguration" will reference the ConfigParser section "logging"
-    when looking up options.
-    """
-    def __init__(self, cfg):
-        self._cfg = cfg
-        self._namespace = self._format_namespace()
-
-    def __getattr__(self, name):
-        return self._get(name)
-
-    def _format_namespace(self):
-        return type(self).__name__.replace('Configuration', '').lower()
-
-    def _options(self):
-        return self._cfg.options(self._namespace)
-
-    def _has_option(self, option):
-        return self._cfg.has_option(self._namespace, option)
-
-    def _get_default(self, option):
-        if option in _CFG_DEFAULTS[self._namespace]:
-            return _CFG_DEFAULTS[self._namespace][option]
-        return None
-
-    def _get(self, option):
-        if self._has_option(option):
-            return self._cfg.get(self._namespace, option)
-        else:
-            return self._get_default(option)
-
-    def _getboolean(self, option):
-        if self._has_option(option):
-            return self._cfg.getboolean(self._namespace, option)
-        else:
-            return self._get_default(option)
-
-    def _getint(self, option):
-        if self._has_option(option):
-            return self._cfg.getint(self._namespace, option)
-        else:
-            return self._get_default(option)
-
-
-class CoreConfiguration(ConfigurationObject):
+class CoreConfiguration(ConfigurationPart):
     """
     Class mapping for the Pyrox configuration section 'core'
     """
@@ -133,7 +61,7 @@ class CoreConfiguration(ConfigurationObject):
         --------
         processes = 0
         """
-        return self._getint('processes')
+        return self.getint('processes')
 
     @property
     def plugin_paths(self):
@@ -147,7 +75,7 @@ class CoreConfiguration(ConfigurationObject):
         plugin_paths = /usr/share/project/python
         plugin_paths = /usr/share/project/python,/usr/share/other/python
         """
-        paths = self._get('plugin_paths')
+        paths = self.get('plugin_paths')
         if paths:
             return [path for path in _split_and_strip(paths, ',')]
         else:
@@ -164,10 +92,10 @@ class CoreConfiguration(ConfigurationObject):
         --------
         bind_host = localhost:8080
         """
-        return self._get('bind_host')
+        return self.get('bind_host')
 
 
-class LoggingConfiguration(ConfigurationObject):
+class LoggingConfiguration(ConfigurationPart):
     """
     Class mapping for the Pyrox configuration section 'logging'
     """
@@ -178,7 +106,7 @@ class LoggingConfiguration(ConfigurationObject):
         stdout for logging purposes. This value may be either True of False. If
         unset this value defaults to False.
         """
-        return self._get('console')
+        return self.get('console')
 
     @property
     def logfile(self):
@@ -187,7 +115,7 @@ class LoggingConfiguration(ConfigurationObject):
         will enable writing to the specified file for logging purposes If unset
         this value defaults to None.
         """
-        return self._get('logfile')
+        return self.get('logfile')
 
     @property
     def verbosity(self):
@@ -196,10 +124,10 @@ class LoggingConfiguration(ConfigurationObject):
         be one of the following: DEBUG, INFO, WARNING, ERROR or CRITICAL. If
         unset this value defaults to WARNING.
         """
-        return self._get('verbosity')
+        return self.get('verbosity')
 
 
-class PipelineConfiguration(ConfigurationObject):
+class PipelineConfiguration(ConfigurationPart):
     """
     Class mapping for the Pyrox configuration section 'pipeline'
 
@@ -237,7 +165,7 @@ class PipelineConfiguration(ConfigurationObject):
         maintain its state for the request and response lifecycle. If left
         unset this option defaults to false.
         """
-        return self._getboolean('use_singletons')
+        return self.getboolean('use_singletons')
 
     @property
     def upstream(self):
@@ -260,7 +188,7 @@ class PipelineConfiguration(ConfigurationObject):
     def _pipeline_for(self, stream):
         pipeline = list()
         filters = self._filter_dict()
-        pipeline_str = self._get(stream)
+        pipeline_str = self.get(stream)
         if pipeline_str:
             for pl_filter in _split_and_strip(pipeline_str, ','):
                 if pl_filter in filters:
@@ -269,14 +197,14 @@ class PipelineConfiguration(ConfigurationObject):
 
     def _filter_dict(self):
         filters = dict()
-        for pfalias in self._options():
+        for pfalias in self.options():
             if pfalias == 'downstream' or pfalias == 'upstream':
                 continue
-            filters[pfalias] = self._get(pfalias)
+            filters[pfalias] = self.get(pfalias)
         return filters
 
 
-class TemplatesConfiguration(ConfigurationObject):
+class TemplatesConfiguration(ConfigurationPart):
     """
     Class mapping for the Pyrox configuration section 'templates'
     """
@@ -287,7 +215,7 @@ class TemplatesConfiguration(ConfigurationObject):
         Pyrox that would prevent normal service of client requests. If left
         unset this option defaults to 502.
         """
-        return self._getint('pyrox_error_sc')
+        return self.getint('pyrox_error_sc')
 
     @property
     def rejection_sc(self):
@@ -296,10 +224,10 @@ class TemplatesConfiguration(ConfigurationObject):
         rejection made with no provided response object to serialize. If
         left unset this option defaults to 400.
         """
-        return self._getint('rejection_sc')
+        return self.getint('rejection_sc')
 
 
-class RoutingConfiguration(ConfigurationObject):
+class RoutingConfiguration(ConfigurationPart):
     """
     Class mapping for the Pyrox configuration section 'routing'
     """
@@ -317,5 +245,5 @@ class RoutingConfiguration(ConfigurationObject):
         upstream_hosts = host:port,host:port,host:port
         upstream_hosts = host:port, host:port, host:port
         """
-        hosts = self._get('upstream_hosts')
+        hosts = self.get('upstream_hosts')
         return [_host_tuple(host) for host in _split_and_strip(hosts, ',')]
