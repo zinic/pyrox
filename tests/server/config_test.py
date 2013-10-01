@@ -1,12 +1,12 @@
 import unittest
 
-from pyrox.config import load_config
+from pyrox.server.config import load_pyrox_config
 
 
 class WhenManipulatingHeaders(unittest.TestCase):
 
     def setUp(self):
-        self.cfg = load_config('./examples/config/pyrox.conf')
+        self.cfg = load_pyrox_config('./examples/config/pyrox.conf')
 
     def test_defaults(self):
         self.assertIsNotNone(self.cfg)
