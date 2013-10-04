@@ -31,6 +31,18 @@ def _write_to_stream(stream, bytes, is_chunked):
         stream.write(bytes)
 
 
+class AccumulationStream(object):
+
+    def __init__(self):
+        self.bytes = bytearray()
+
+    def write(self, data):
+        self.bytes.extend(data)
+
+    def size(self):
+        return len(self.bytes)
+
+
 class ProxyHandler(ParserDelegate):
     """
     Common class for the stream handlers. This parent class manages the
@@ -63,6 +75,7 @@ class DownstreamHandler(ProxyHandler):
     This data comes from the client initiating the request against the
     proxy.
     """
+
     def __init__(self, downstream, filter_pl, connect_upstream):
         super(DownstreamHandler, self).__init__(filter_pl, HttpRequest())
         self._downstream = downstream
@@ -93,7 +106,6 @@ class DownstreamHandler(ProxyHandler):
     def on_headers_complete(self):
         # Execute against the pipeline
         action = self._filter_pl.on_request(self._http_msg)
-        print('Got downstream action -> {}'.format(action))
 
         # If we're rejecting then we're not going to connect to upstream
         if action.is_rejecting():
@@ -109,13 +121,21 @@ class DownstreamHandler(ProxyHandler):
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
         if not self._rejected:
+            accumulator = AccumulationStream
+            data = bytes[:length]
+
+            self._filter_pl.on_request_body(data, accumulator)
+
+            if accumulator.size() > 0:
+                data = accumulator.bytes
+
             # If we're not already connected, store the fragment for later
             if not self._upstream:
-                self._store_body(bytes)
+                self._store_body(data)
             else:
                 _write_to_stream(
                     self._upstream,
-                    self._get_body(bytes),
+                    self._get_body(data),
                     is_chunked)
 
     def on_message_complete(self, is_chunked, keep_alive):
@@ -135,6 +155,7 @@ class UpstreamHandler(ProxyHandler):
     data usually comes from the origin service or it may come from another
     proxy.
     """
+
     def __init__(self, downstream, upstream, filter_pl):
         super(UpstreamHandler, self).__init__(filter_pl, HttpResponse())
         self._downstream = downstream
@@ -154,9 +175,16 @@ class UpstreamHandler(ProxyHandler):
 
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
-        if self._rejected:
-            return
-        _write_to_stream(self._downstream, bytes, is_chunked)
+        if not self._rejected:
+            accumulator = AccumulationStream
+            data = bytes[:length]
+
+            self._filter_pl.on_request_body(data, accumulator)
+
+            if accumulator.size() > 0:
+                data = accumulator.bytes
+
+            _write_to_stream(self._downstream, data, True)
 
     def on_message_complete(self, is_chunked, keep_alive):
         callback = None if keep_alive else self._downstream.close

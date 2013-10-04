@@ -34,6 +34,7 @@ class LoggingManager(object):
 
         # Configuration handling
         self._root_logger.setLevel(cfg.logging.verbosity)
+
         if cfg.logging.logfile:
             self._add_handler(logging.FileHandler(cfg.logging.logfile))
         if cfg.logging.console:

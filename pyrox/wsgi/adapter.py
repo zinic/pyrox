@@ -1,5 +1,5 @@
 from pyrox.http import HttpResponse
-from pyrox.filtering import reject, pass_event
+from pyrox.filtering import reject
 
 
 """

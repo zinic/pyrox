@@ -1,3 +1,5 @@
+import inspect
+
 from pyrox.http import HttpResponse
 from pyrox.log import get_logger
 
@@ -57,23 +59,65 @@ class FilterAction(object):
             action_kind, self.breaks_pipeline())
 
 
+def handles_request_head(request_func):
+    """
+    This function decorator may be used to mark a method as usable for
+    intercepting request head content.
+
+    handles_request_head will accept an HttpRequest object and implement
+    the logic that will define the FilterActions to be applied
+    to the request
+    """
+    request_func._handles_request_head =  True
+    return request_func
+
+
+def handles_request_body(request_func):
+    """
+    This function decorator may be used to mark a method as usable for
+    intercepting request body content.
+
+    handles_request_body will intercept the HTTP content in chunks as it
+    arrives. This method, like others in the filter class may return a
+    FilterAction.
+    """
+    request_func._handles_request_body =  True
+    return request_func
+
+
+def handles_response_head(request_func):
+    """
+    This function decorator may be used to mark a method as usable for
+    intercepting response head content.
+
+    handles_response_head will accept an HttpResponse object and implement
+    the logic that will define the FilterActions to be applied
+    to the request
+    """
+
+    request_func._handles_response_head =  True
+    return request_func
+
+
+def handles_response_body(request_func):
+    """
+    This function decorator may be used to mark a method as usable for
+    intercepting response body content.
+
+    handles_response_body will intercept the HTTP content in chunks as they
+    arrives. This method, like others in the filter class, may return a
+    FilterAction.
+    """
+    request_func._handles_response_body =  True
+    return request_func
+
+
 class HttpFilter(object):
-
-    def on_request(self, request_message):
-        """
-        on_request will accept an HttpRequest object and implement
-        the logic that will define the FilterActions to be applied
-        to the request
-        """
-        return pass_event()
-
-    def on_response(self, response_message):
-        """
-        on_response will accept an HttpResponse object and implement
-        the logic that will define the FilterActions to be applied
-        to the request
-        """
-        return pass_event()
+    """
+    HttpFilter is a marker class that may be utilized for dynamic gathering
+    of filter logic.
+    """
+    pass
 
 
 """
@@ -122,7 +166,7 @@ def route(upstream_target):
     return FilterAction(ROUTE, upstream_target)
 
 
-def pass_event():
+def next():
     """
     Passes the current http event down the filter chain. This allows for
     downstream filters a chance to process the event.
@@ -145,19 +189,31 @@ class HttpFilterPipeline(object):
                     with element 0 being the first to receive events.
     """
     def __init__(self):
-        self.chain = list()
+        self._msg_req_head_chain = list()
+        self._msg_req_body_chain = list()
+        self._msg_resp_head_chain = list()
+        self._msg_req_body_chain = list()
 
     def add_filter(self, http_filter):
-        self.chain.append(http_filter)
+        filter_methods = inspect.getmembers(http_filter, inspect.ismethod)
 
-    def on_request(self, request):
+        for method in filter_methods:
+            # Assume that if an attribute exists then it is decorated
+            if hasattr(method, '_handles_request_head'):
+                self._msg_req_head_chain.append((http_filter, method))
+            elif hasattr(method, '_handles_request_body'):
+                self._msg_req_body_chain.append((http_filter, method))
+            elif hasattr(method, '_handles_response_head'):
+                self._msg_resp_head_chain.append((http_filter, method))
+            elif hasattr(method, '_handles_response_body'):
+                self._msg_resp_body_chain.append((http_filter, method))
+
+    def _on_head(self, chain, head):
         last_action = pass_event()
 
-        for http_filter in self.chain:
-            print('Passing to filter: {}'.format(http_filter))
-
+        for http_filter, method in chain:
             try:
-                action = http_filter.on_request(request)
+                action = method(http_filter, head)
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
@@ -168,18 +224,31 @@ class HttpFilterPipeline(object):
 
         return last_action
 
-    def on_response(self, response):
+    def _on_body(self, chain, body_part, output_stream):
         last_action = pass_event()
 
-        for http_filter in self.chain:
+        for http_filter, method in chain:
             try:
-                action = http_filter.on_response(response)
+                action = method(http_filter, body_part, output_stream)
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
+
             if action:
                 last_action = action
                 if action.breaks_pipeline():
                     break
 
         return last_action
+
+    def on_request_head(self, request_head):
+        return self._on_head(self._msg_req_head_chain, request_head)
+
+    def on_request_body(self, body_part, output_stream):
+        return self._on_body(self._msg_req_body_chain, body_part, output_stream)
+
+    def on_response_head(self, response_head):
+        return self._on_head(self._msg_resp_head_chain, response_head)
+
+    def on_response_body(self, body_part, output_stream):
+        return self._on_body(self._msg_resp_body_chain, body_part, output_stream)

@@ -1,5 +1,4 @@
 import os.path
-import inspect
 import pynsive
 
 from ConfigParser import ConfigParser
