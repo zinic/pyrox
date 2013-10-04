@@ -68,6 +68,7 @@ def handles_request_head(request_func):
     the logic that will define the FilterActions to be applied
     to the request
     """
+    print('dec called')
     request_func._handles_request_head =  True
     return request_func
 
@@ -81,6 +82,7 @@ def handles_request_body(request_func):
     arrives. This method, like others in the filter class may return a
     FilterAction.
     """
+    print('dec called')
     request_func._handles_request_body =  True
     return request_func
 
@@ -94,7 +96,7 @@ def handles_response_head(request_func):
     the logic that will define the FilterActions to be applied
     to the request
     """
-
+    print('dec called')
     request_func._handles_response_head =  True
     return request_func
 
@@ -108,6 +110,7 @@ def handles_response_body(request_func):
     arrives. This method, like others in the filter class, may return a
     FilterAction.
     """
+    print('dec called')
     request_func._handles_response_body =  True
     return request_func
 
@@ -189,31 +192,36 @@ class HttpFilterPipeline(object):
                     with element 0 being the first to receive events.
     """
     def __init__(self):
-        self._msg_req_head_chain = list()
-        self._msg_req_body_chain = list()
-        self._msg_resp_head_chain = list()
-        self._msg_req_body_chain = list()
+        self._req_head_chain = list()
+        self._req_body_chain = list()
+        self._resp_head_chain = list()
+        self._resp_body_chain = list()
 
     def add_filter(self, http_filter):
         filter_methods = inspect.getmembers(http_filter, inspect.ismethod)
 
         for method in filter_methods:
+            if len(method) < 1:
+                continue
+
+            finst = method[1]
+
             # Assume that if an attribute exists then it is decorated
-            if hasattr(method, '_handles_request_head'):
-                self._msg_req_head_chain.append((http_filter, method))
-            elif hasattr(method, '_handles_request_body'):
-                self._msg_req_body_chain.append((http_filter, method))
-            elif hasattr(method, '_handles_response_head'):
-                self._msg_resp_head_chain.append((http_filter, method))
-            elif hasattr(method, '_handles_response_body'):
-                self._msg_resp_body_chain.append((http_filter, method))
+            if hasattr(finst, '_handles_request_head'):
+                self._req_head_chain.append((http_filter, finst))
+            elif hasattr(finst, '_handles_request_body'):
+                self._req_body_chain.append((http_filter, finst))
+            elif hasattr(finst, '_handles_response_head'):
+                self._resp_head_chain.append((http_filter, finst))
+            elif hasattr(finst, '_handles_response_body'):
+                self._resp_body_chain.append((http_filter, finst))
 
     def _on_head(self, chain, head):
-        last_action = pass_event()
+        last_action = next()
 
         for http_filter, method in chain:
             try:
-                action = method(http_filter, head)
+                action = method( head)
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
@@ -224,12 +232,12 @@ class HttpFilterPipeline(object):
 
         return last_action
 
-    def _on_body(self, chain, body_part, output_stream):
-        last_action = pass_event()
+    def _on_body(self, chain, body_part, output):
+        last_action = next()
 
         for http_filter, method in chain:
             try:
-                action = method(http_filter, body_part, output_stream)
+                action = method(body_part, output)
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
@@ -242,13 +250,13 @@ class HttpFilterPipeline(object):
         return last_action
 
     def on_request_head(self, request_head):
-        return self._on_head(self._msg_req_head_chain, request_head)
+        return self._on_head(self._req_head_chain, request_head)
 
-    def on_request_body(self, body_part, output_stream):
-        return self._on_body(self._msg_req_body_chain, body_part, output_stream)
+    def on_request_body(self, body_part, output):
+        return self._on_body(self._req_body_chain, body_part, output)
 
     def on_response_head(self, response_head):
-        return self._on_head(self._msg_resp_head_chain, response_head)
+        return self._on_head(self._resp_head_chain, response_head)
 
-    def on_response_body(self, body_part, output_stream):
-        return self._on_body(self._msg_resp_body_chain, body_part, output_stream)
+    def on_response_body(self, body_part, output):
+        return self._on_body(self._resp_body_chain, body_part, output)
