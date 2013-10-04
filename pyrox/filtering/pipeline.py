@@ -68,7 +68,6 @@ def handles_request_head(request_func):
     the logic that will define the FilterActions to be applied
     to the request
     """
-    print('dec called')
     request_func._handles_request_head =  True
     return request_func
 
@@ -82,7 +81,6 @@ def handles_request_body(request_func):
     arrives. This method, like others in the filter class may return a
     FilterAction.
     """
-    print('dec called')
     request_func._handles_request_body =  True
     return request_func
 
@@ -96,7 +94,6 @@ def handles_response_head(request_func):
     the logic that will define the FilterActions to be applied
     to the request
     """
-    print('dec called')
     request_func._handles_response_head =  True
     return request_func
 
@@ -110,7 +107,6 @@ def handles_response_body(request_func):
     arrives. This method, like others in the filter class, may return a
     FilterAction.
     """
-    print('dec called')
     request_func._handles_response_body =  True
     return request_func
 
