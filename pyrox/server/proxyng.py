@@ -18,17 +18,18 @@ _MAX_READ = 1024
 _CHUNK_CLOSE = b'0\r\n\r\n'
 
 
-def _write_to_stream(stream, bytes, is_chunked):
+def _write_to_stream(stream, data, is_chunked):
     if is_chunked:
         # Format and write this chunk
         chunk = bytearray()
-        chunk.extend(hex(length)[2:])
+        chunk.extend(hex(len(data))[2:])
         chunk.extend('\r\n')
-        chunk.extend(bytes)
+        chunk.extend(data)
         chunk.extend('\r\n')
-        stream.write(chunk)
+
+        stream.write(bytes(chunk))
     else:
-        stream.write(bytes)
+        stream.write(data)
 
 
 class AccumulationStream(object):
@@ -105,7 +106,12 @@ class DownstreamHandler(ProxyHandler):
 
     def on_headers_complete(self):
         # Execute against the pipeline
-        action = self._filter_pl.on_request(self._http_msg)
+        action = self._filter_pl.on_request_head(self._http_msg)
+
+        self._http_msg.remove_header('content-length')
+        self._http_msg.remove_header('transfer-encoding')
+
+        self._http_msg.header('transfer-encoding').values.append('chunked')
 
         # If we're rejecting then we're not going to connect to upstream
         if action.is_rejecting():
@@ -121,12 +127,15 @@ class DownstreamHandler(ProxyHandler):
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
         if not self._rejected:
-            accumulator = AccumulationStream
+            accumulator = AccumulationStream()
             data = bytes[:length]
+
+            print(data)
 
             self._filter_pl.on_request_body(data, accumulator)
 
             if accumulator.size() > 0:
+                print('here')
                 data = accumulator.bytes
 
             # If we're not already connected, store the fragment for later
@@ -165,8 +174,13 @@ class UpstreamHandler(ProxyHandler):
         self._http_msg.status = str(status_code)
 
     def on_headers_complete(self):
-        action = self._filter_pl.on_response(self._http_msg)
-        print('Got upstream action -> {}'.format(action))
+        action = self._filter_pl.on_response_head(self._http_msg)
+
+        self._http_msg.remove_header('content-length')
+        self._http_msg.remove_header('transfer-encoding')
+
+        self._http_msg.header('transfer-encoding').values.append('chunked')
+
         if action.is_rejecting():
             self._rejected = True
             self._response = action.payload
@@ -176,10 +190,10 @@ class UpstreamHandler(ProxyHandler):
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
         if not self._rejected:
-            accumulator = AccumulationStream
+            accumulator = AccumulationStream()
             data = bytes[:length]
 
-            self._filter_pl.on_request_body(data, accumulator)
+            self._filter_pl.on_response_body(data, accumulator)
 
             if accumulator.size() > 0:
                 data = accumulator.bytes
@@ -193,7 +207,7 @@ class UpstreamHandler(ProxyHandler):
             self._downstream.write(
                 self._http_msg.to_bytes(),
                 callback=callback)
-        elif is_chunked:
+        else:
             # Finish the last chunk.
             self._downstream.write(
                 _CHUNK_CLOSE,

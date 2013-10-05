@@ -205,11 +205,14 @@ class HttpFilterPipeline(object):
             # Assume that if an attribute exists then it is decorated
             if hasattr(finst, '_handles_request_head'):
                 self._req_head_chain.append((http_filter, finst))
-            elif hasattr(finst, '_handles_request_body'):
+
+            if hasattr(finst, '_handles_request_body'):
                 self._req_body_chain.append((http_filter, finst))
-            elif hasattr(finst, '_handles_response_head'):
+
+            if hasattr(finst, '_handles_response_head'):
                 self._resp_head_chain.append((http_filter, finst))
-            elif hasattr(finst, '_handles_response_body'):
+
+            if hasattr(finst, '_handles_response_body'):
                 self._resp_body_chain.append((http_filter, finst))
 
     def _on_head(self, chain, head):
