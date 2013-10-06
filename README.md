@@ -1,9 +1,27 @@
 [![Build Status](http://jenkins.projectmeniscus.org/job/Pyrox/badge/icon)](http://jenkins.projectmeniscus.org/job/Pyrox/)
 
 # [Pyrox](http://pyrox-http.org/)
-The fast Python HTTP middleware server
+#### The fast Python HTTP middleware server
+
+## What is Pyrox?
+
+#### Hosted REST Interceptors!
+
+Pyrox is a HTTP reverse proxy that can intercept requests ahead of an upstream
+HTTP REST service. This allows reuse of common middleware functions like:
+message enhancement, dynamic routing, authentication, authorization, resource
+request rate limiting, service distribution, content negotiation and content
+transformation. These services can then be scaled horizontally separate the
+origin REST endpoint.
+
+Build ontop of the [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
+python library, the HTTP code inside Pyrox can scale to thousands of concurrent
+clients and proxy them to a similar number of upstream REST services.
 
 ## Features
+
+* Debian packaging targeting Ubuntu 12.04 LTS
+* Extensive plugin support with the ability to source middleware code from multiple, separate plugin paths
 * Fast HTTP parser written in C with much of the code based on the [Joyent HTTP Parser](https://github.com/joyent/http-parser)
 * Utilizes [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
 * Low dependency footprint
@@ -68,4 +86,3 @@ may contain custom code and may be loaded from different paths.
 ##That Legal Thing...
 
 This software library is released to you under the [MIT License](http://opensource.org/licenses/MIT). See [LICENSE](https://github.com/zinic/pyrox/blob/master/LICENSE) for more information.
-
