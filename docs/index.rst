@@ -1,24 +1,53 @@
-.. Pyrox documentation master file, created by
-   sphinx-quickstart on Tue Aug 27 01:52:31 2013.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+Pyrox
+=====================
 
-Welcome to Pyrox's documentation!
-=================================
+Pyrox is a HTTP reverse proxy that can intercept requests ahead of an upstream
+HTTP REST service. This allows reuse of common middleware functions like:
+message enhancement, dynamic routing, authentication, authorization, resource
+request rate limiting, service distribution, content negotiation and content
+transformation. These services can then be scaled horizontally separate the
+origin REST endpoint.
 
-Below is a list of the package documentation collections:
+Built ontop of the `Tornado Async I/O library <http://www.tornadoweb.org/en/stable/>`_
+, the HTTP code inside Pyrox can scale to thousands of concurrent
+clients and proxy them to a similar number of upstream REST services.
+
+
+Getting Started
+~~~~~~~~~~~~~~~
+
+Below are some helpful documents to help get you started in using Pynsive.
 
 .. toctree::
-   :maxdepth: 4
+    :maxdepth: 2
 
-   pyrox
+    building
+
+.. toctree::
+    :maxdepth: 2
+
+    installing
 
 
+Pyrox Documentation
+~~~~~~~~~~~~~~~~~~~~~
 
-Indices and tables
-==================
+.. toctree::
+    :maxdepth: 2
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+    usage
+
+.. toctree::
+    :maxdepth: 2
+
+    pyrox
+
+
+That Legal Thing...
+~~~~~~~~~~~~~~~~~~~
+
+This software library is released to you under the
+`MIT Software License <http://opensource.org/licenses/MIT>`_
+. See `LICENSE <https://github.com/zinic/pynsive/blob/master/LICENSE>`_ for
+more information.
 

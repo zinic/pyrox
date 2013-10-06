@@ -49,17 +49,18 @@ def load_pyrox_config(location='/etc/pyrox/pyrox.conf'):
 
 class CoreConfiguration(ConfigurationPart):
     """
-    Class mapping for the Pyrox configuration section 'core'
+    Class mapping for the Pyrox core configuration section.
+    ::
+        # Core section
+        [core]
     """
     @property
     def processes(self):
         """
         Returns the number of processes Pyrox should spin up to handle
         messages. If unset, this defaults to 1.
-
-        Example
-        --------
-        processes = 0
+        ::
+            processes = 75
         """
         return self.getint('processes')
 
@@ -69,11 +70,11 @@ class CoreConfiguration(ConfigurationPart):
         Returns a list of directories to plug into when attempting to resolve
         the names of pipeline filters. This option may be a single directory or
         a comma delimited list of directories.
-
-        Example
-        -------
-        plugin_paths = /usr/share/project/python
-        plugin_paths = /usr/share/project/python,/usr/share/other/python
+        ::
+            # Any of the below are acceptable
+            plugin_paths = /usr/share/project/python
+            plugin_paths = /usr/share/project/python,/usr/share/other/python
+            plugin_paths = /opt/pyrox/stock, /opt/pyrox/contrib
         """
         paths = self.get('plugin_paths')
         if paths:
@@ -87,17 +88,18 @@ class CoreConfiguration(ConfigurationPart):
         Returns the host and port the proxy is expected to bind to when
         accepting connections. This option defaults to localhost:8080 if left
         unset.
-
-        Example
-        --------
-        bind_host = localhost:8080
+        ::
+            bind_host = localhost:8080
         """
         return self.get('bind_host')
 
 
 class LoggingConfiguration(ConfigurationPart):
     """
-    Class mapping for the Pyrox configuration section 'logging'
+    Class mapping for the Pyrox logging configuration section.
+    ::
+        # Logging section
+        [logging]
     """
     @property
     def console(self):
@@ -105,6 +107,8 @@ class LoggingConfiguration(ConfigurationPart):
         Returns a boolean representing whether or not Pyrox should write to
         stdout for logging purposes. This value may be either True of False. If
         unset this value defaults to False.
+        ::
+            console = True
         """
         return self.get('console')
 
@@ -114,6 +118,8 @@ class LoggingConfiguration(ConfigurationPart):
         Returns the log file the system should write logs to. When set, Pyrox
         will enable writing to the specified file for logging purposes If unset
         this value defaults to None.
+        ::
+            logfile = /var/log/pyrox/pyrox.log
         """
         return self.get('logfile')
 
@@ -123,13 +129,18 @@ class LoggingConfiguration(ConfigurationPart):
         Returns the type of log messages that should be logged. This value may
         be one of the following: DEBUG, INFO, WARNING, ERROR or CRITICAL. If
         unset this value defaults to WARNING.
+        ::
+            verbosity = DEBUG
         """
         return self.get('verbosity')
 
 
 class PipelineConfiguration(ConfigurationPart):
     """
-    Class mapping for the Pyrox configuration section 'pipeline'
+    Class mapping for the Pyrox pipeline configuration section.
+    ::
+        # Pipeline section
+        [pipeline]
 
     Configuring a pipeline requires the admin to first configure aliases to
     each filter referenced. This is done by adding a named configuration
@@ -146,15 +157,15 @@ class PipelineConfiguration(ConfigurationPart):
     client also known as the request. Downstream events originate from the
     origin service (the upstream request target) and is also known as the
     response.
+    ::
+        [pipeline]
+            filter_1 = myfilters.upstream.Filter1
+            filter_2 = myfilters.upstream.Filter2
+            filter_3 = myfilters.downstream.Filter3
 
-    Example Pipeline Configuration
-    ---------------------
-    filter_1 = myfilters.upstream.Filter1
-    filter_2 = myfilters.upstream.Filter2
-    filter_3 = myfilters.downstream.Filter3
+            upstream = filter_1, filter_2
+            downstream = filter_3
 
-    upstream = filter_1, filter_2
-    downstream = filter_3
     """
     @property
     def use_singletons(self):
@@ -164,6 +175,8 @@ class PipelineConfiguration(ConfigurationPart):
         effectively, that a filter specified in both pipelines will
         maintain its state for the request and response lifecycle. If left
         unset this option defaults to false.
+        ::
+            use_singletons = True
         """
         return self.getboolean('use_singletons')
 
@@ -173,6 +186,8 @@ class PipelineConfiguration(ConfigurationPart):
         Returns the list of filters configured to handle upstream events.
         This configuration option must be a comma delimited list of filter
         aliases. If left unset this option defaults to an empty list.
+        ::
+            upstream = filter_1, filter_2
         """
         return self._pipeline_for('upstream')
 
@@ -182,6 +197,8 @@ class PipelineConfiguration(ConfigurationPart):
         Returns the list of filters configured to handle downstream events.
         This configuration option must be a comma delimited list of filter
         aliases. If left unset this option defaults to an empty tuple.
+        ::
+            downstream = filter_3
         """
         return self._pipeline_for('downstream')
 
@@ -206,7 +223,10 @@ class PipelineConfiguration(ConfigurationPart):
 
 class TemplatesConfiguration(ConfigurationPart):
     """
-    Class mapping for the Pyrox configuration section 'templates'
+    Class mapping for the Pyrox teplates configuration section.
+    ::
+        # Templates section
+        [templates]
     """
     @property
     def pyrox_error_sc(self):
@@ -214,6 +234,8 @@ class TemplatesConfiguration(ConfigurationPart):
         Returns the status code to be set for any error that happens within
         Pyrox that would prevent normal service of client requests. If left
         unset this option defaults to 502.
+        ::
+            pyrox_error_sc = 502
         """
         return self.getint('pyrox_error_sc')
 
@@ -223,13 +245,18 @@ class TemplatesConfiguration(ConfigurationPart):
         Returns the default status code to be set for client request
         rejection made with no provided response object to serialize. If
         left unset this option defaults to 400.
+        ::
+            rejection_sc = 400
         """
         return self.getint('rejection_sc')
 
 
 class RoutingConfiguration(ConfigurationPart):
     """
-    Class mapping for the Pyrox configuration section 'routing'
+    Class mapping for the Pyrox routing configuration section.
+    ::
+        # Routing section
+        [routing]
     """
     @property
     def upstream_hosts(self):
@@ -238,12 +265,8 @@ class RoutingConfiguration(ConfigurationPart):
         set to either a single host and port or a comma delimited list of hosts
         and their associated ports. This option defaults to localhost:80 if
         left unset.
-
-        Examples
-        --------
-        upstream_hosts = host:port
-        upstream_hosts = host:port,host:port,host:port
-        upstream_hosts = host:port, host:port, host:port
+        ::
+            upstream_hosts = host:port, host:port, host:port
         """
         hosts = self.get('upstream_hosts')
         return [_host_tuple(host) for host in _split_and_strip(hosts, ',')]
