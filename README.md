@@ -18,6 +18,12 @@ Build ontop of the [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
 python library, the HTTP code inside Pyrox can scale to thousands of concurrent
 clients and proxy them to a similar number of upstream REST services.
 
+## Documentation
+
+#### [Latest Pyrox Documentation](http://pyrox.readthedocs.org/en/latest/)
+
+Thanks [Read the Docs](http://readthedocs.org)!
+
 ## Features
 
 * Debian packaging targeting Ubuntu 12.04 LTS
@@ -62,20 +68,7 @@ optional arguments:
                      when loading plugins.
 ```
 
-## Using Pyrox
-
-### Configuration
-
-See the configuration documentation here: TODO
-
-* [Configuration Example](https://github.com/zinic/pyrox/blob/master/examples/config/pyrox.conf)
-
-### Filters
-
-Filters in Pyrox allow a programmer to act upon a request or a response. They
-may contain custom code and may be loaded from different paths.
-
-#### Examples
+## Filter Examples
 
 * [Simple request handling](https://github.com/zinic/pyrox/blob/master/examples/filter/simple_example.py)
 * [Dynamic routing](https://github.com/zinic/pyrox/blob/master/examples/filter/routing_example.py)
@@ -83,6 +76,6 @@ may contain custom code and may be loaded from different paths.
 * [Role Based Access Controls (Based on EOM)](https://github.com/zinic/pyrox-stock/blob/master/pyrox_stock/auth/openstack/rbac.py)
 
 
-##That Legal Thing...
+## That Legal Thing...
 
 This software library is released to you under the [MIT License](http://opensource.org/licenses/MIT). See [LICENSE](https://github.com/zinic/pyrox/blob/master/LICENSE) for more information.
