@@ -79,8 +79,8 @@ may contain custom code and may be loaded from different paths.
 
 * [Simple request handling](https://github.com/zinic/pyrox/blob/master/examples/filter/simple_example.py)
 * [Dynamic routing](https://github.com/zinic/pyrox/blob/master/examples/filter/routing_example.py)
-* [Keystone auth passthrough](https://github.com/zinic/pyrox/blob/master/examples/filter/keystone_meniscus_example.py)
-* [Role Based Access Controls (Based on EOM)](https://github.com/zinic/eom/blob/master/eom/rbac_pyrox.py)
+* [Keystone Token Validation](https://github.com/zinic/pyrox-stock/blob/master/pyrox_stock/auth/openstack/keystone.py)
+* [Role Based Access Controls (Based on EOM)](https://github.com/zinic/pyrox-stock/blob/master/pyrox_stock/auth/openstack/rbac.py)
 
 
 ##That Legal Thing...
