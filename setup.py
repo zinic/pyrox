@@ -65,7 +65,7 @@ def package_c():
 ext_modules = None
 
 # Got tired of fighting build_ext
-if 'build' in sys.argv:
+if 'build' in sys.argv and 'install' in sys.argv:
     cythonize()
 
 ext_modules = package_c()
