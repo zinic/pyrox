@@ -52,20 +52,25 @@ def cythonize():
 
 def package_c():
     extensions = list()
-    extensions.append(Extension(
-        'pyrox.http.parser',
-        include_dirs=['include/'],
-        sources=['include/http_el.c', 'pyrox/http/parser.c'],
-        extra_compile_args=COMPILER_ARGS))
-    extensions.append(Extension(
-        'pyrox.http.model_util',
-        sources=['pyrox/http/model_util.c']))
+
+    if os.path.isfile('pyrox/http/parser.c'):
+        extensions.append(Extension(
+            'pyrox.http.parser',
+            include_dirs=['include/'],
+            sources=['include/http_el.c', 'pyrox/http/parser.c'],
+            extra_compile_args=COMPILER_ARGS))
+
+    if os.path.isfile('pyrox/http/model_util.c'):
+        extensions.append(Extension(
+            'pyrox.http.model_util',
+            sources=['pyrox/http/model_util.c']))
+
     return extensions
 
 ext_modules = None
 
 # Got tired of fighting build_ext
-if 'build' in sys.argv and 'install' in sys.argv:
+if 'build' in sys.argv:
     cythonize()
 
 ext_modules = package_c()
