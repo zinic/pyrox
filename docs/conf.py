@@ -23,7 +23,7 @@ class ModuleMock(object):
 
 
 for mod in ['pyrox.http.parser', 'pyrox.http.model_util']:
-    sys.modules[mod] = Mock()
+    sys.modules[mod] = ModuleMock()
 
 
 def read(relative):
