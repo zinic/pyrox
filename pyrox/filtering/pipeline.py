@@ -150,6 +150,8 @@ def reject(response=None):
     becomes the response the client should expect to see. If a response
     parameter is not provided then the function will default to the configured
     default response.
+
+    :param response: the response object to reply to the client with
     """
     return FilterAction(REJECT, response) if response\
         else FilterAction(REJECT, _DEFAULT_REJECT_RESP)
@@ -161,6 +163,9 @@ def route(upstream_target):
     halt execution of the filter pipeline and begin streaming the request to
     the specified upstream target. This method is invalid for handling an
     upstream response.
+
+    :param upstream_target: the <host:port> string of the upstream target
+                            to route to.
     """
     return FilterAction(ROUTE, upstream_target)
 
@@ -183,9 +188,8 @@ class HttpFilterPipeline(object):
     lifetime of the filter chain or its filters.
 
 
-    Attributes:
-        chain       A list of HttpFilter objects organized to act as a pipeline
-                    with element 0 being the first to receive events.
+    :param chain: A list of HttpFilter objects organized to act as a pipeline
+                  with element 0 being the first to receive events.
     """
     def __init__(self):
         self._req_head_chain = list()

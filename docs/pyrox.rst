@@ -3,17 +3,25 @@ Pyrox API Documentation
 
 
 :mod:`pyrox` Module
-~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: pyrox
     :members:
     :undoc-members:
     :show-inheritance:
 
-:mod:`pyrox.http` Module
-------------------------
+:mod:`pyrox.http.model` Module
+------------------------------
 
-.. automodule:: pyrox.http
+.. automodule:: pyrox.http.model
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`pyrox.filtering.pipeline` Module
+--------------------------------------
+
+.. automodule:: pyrox.filtering.pipeline
     :members:
     :undoc-members:
     :show-inheritance:
@@ -22,6 +30,14 @@ Pyrox API Documentation
 ---------------------------------
 
 .. automodule:: pyrox.server.config
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+:mod:`pyrox.util.config` Module
+------------------------------
+
+.. automodule:: pyrox.util.config
     :members:
     :undoc-members:
     :show-inheritance:
