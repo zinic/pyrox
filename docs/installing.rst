@@ -6,12 +6,11 @@ Debian Compatible Systems
 
 Download the correct .deb file for your architecture.
 
-* Debian Wheezy
-* Ubuntu 12.04 LTS
+* Debian Wheezy (No Link Available Yet)
+* `Ubuntu 12.04 LTS <http://166.78.244.178/pool/squeeze/main/p/pyrox/pyrox_0.2.4_amd64.deb>`_
 
 ::
 
-    curl --remote-name http://pyrox-http.org/deb/<distro>/pyrox_<version>_<arch>.deb
     dpkg -i pyrox_<version>_<arch>.deb
     service pyrox start
 
