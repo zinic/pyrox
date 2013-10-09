@@ -108,10 +108,11 @@ class DownstreamHandler(ProxyHandler):
         # Execute against the pipeline
         action = self._filter_pl.on_request_head(self._http_msg)
 
-        self._http_msg.remove_header('content-length')
-        self._http_msg.remove_header('transfer-encoding')
+        if self._http_msg.get_header('content-length'):
+            self._http_msg.remove_header('content-length')
+            self._http_msg.remove_header('transfer-encoding')
 
-        self._http_msg.header('transfer-encoding').values.append('chunked')
+            self._http_msg.header('transfer-encoding').values.append('chunked')
 
         # If we're rejecting then we're not going to connect to upstream
         if action.is_rejecting():
@@ -169,6 +170,7 @@ class UpstreamHandler(ProxyHandler):
         super(UpstreamHandler, self).__init__(filter_pl, HttpResponse())
         self._downstream = downstream
         self._upstream = upstream
+        self._chunked = False
 
     def on_status(self, status_code):
         self._http_msg.status = str(status_code)
@@ -176,10 +178,12 @@ class UpstreamHandler(ProxyHandler):
     def on_headers_complete(self):
         action = self._filter_pl.on_response_head(self._http_msg)
 
-        self._http_msg.remove_header('content-length')
-        self._http_msg.remove_header('transfer-encoding')
+        if self._http_msg.get_header('content-length'):
+            self._chunked = True
+            self._http_msg.remove_header('content-length')
+            self._http_msg.remove_header('transfer-encoding')
 
-        self._http_msg.header('transfer-encoding').values.append('chunked')
+            self._http_msg.header('transfer-encoding').values.append('chunked')
 
         if action.is_rejecting():
             self._rejected = True
@@ -207,7 +211,7 @@ class UpstreamHandler(ProxyHandler):
             self._downstream.write(
                 self._http_msg.to_bytes(),
                 callback=callback)
-        else:
+        elif is_chunked or self._chunked:
             # Finish the last chunk.
             self._downstream.write(
                 _CHUNK_CLOSE,
@@ -327,6 +331,7 @@ class ProxyConnection(object):
 
         # Allow downstream reads again
         self._hold_downstream = False
+        self._downstream_handler._upstream = upstream
         if not self._downstream.reading():
             self._downstream.read_bytes(
                 num_bytes=_MAX_READ,
