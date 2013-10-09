@@ -288,7 +288,7 @@ char * http_el_state_name(http_el_state state) {
         case s_header_value:
             return "header value";
         case s_body:
-            return "request body";
+            return "message body";
         case s_chunk_size:
             return "chunk size";
         case s_chunk_parameters:

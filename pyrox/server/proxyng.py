@@ -3,10 +3,12 @@ import socket
 import tornado
 import tornado.ioloop
 import tornado.process
-import tornado.iostream as iostream
-import tornado.tcpserver as tcpserver
 
 from .routing import RoutingHandler
+
+from pyrox.util.streaming import IOStream, StreamClosedError
+from pyrox.util.sserver import TCPServer
+
 from pyrox.log import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
@@ -244,7 +246,7 @@ class ConnectionTracker(object):
         us_sock.setblocking(0)
 
         # Create and bind the IOStream
-        live_stream = tornado.iostream.IOStream(us_sock)
+        live_stream = IOStream(us_sock)
         self._streams[target] = live_stream
 
         def on_close():
@@ -272,9 +274,6 @@ class ProxyConnection(object):
             self._on_upstream_live,
             self._on_pipe_broken)
 
-        # TODO:Review - Is this kind of hold really needed? Hmmm...
-        self._hold_downstream = False
-
         # Setup all of the wiring for downstream
         self._downstream = downstream
         self._downstream_handler = DownstreamHandler(
@@ -283,8 +282,7 @@ class ProxyConnection(object):
             self._connect_upstream)
         self._downstream_parser = RequestParser(self._downstream_handler)
         self._downstream.set_close_callback(self._on_downstream_close)
-        self._downstream.read_bytes(
-            num_bytes=_MAX_READ,
+        self._downstream.read_until_close(
             callback=self._on_downstream_read,
             streaming_callback=self._on_downstream_read)
 
@@ -325,11 +323,8 @@ class ProxyConnection(object):
         # Drop the ref to the proxied request head
         self._request = None
 
-        # Allow downstream reads again
-        self._hold_downstream = False
         if not self._downstream.reading():
-            self._downstream.read_bytes(
-                num_bytes=_MAX_READ,
+            self._downstream.read_until_close(
                 callback=self._on_downstream_read,
                 streaming_callback=self._on_downstream_read)
 
@@ -344,29 +339,24 @@ class ProxyConnection(object):
             self._upstream_parser.destroy()
 
     def _on_downstream_read(self, data):
-        if len(data) > 0:
-            try:
-                self._downstream_parser.execute(data)
-            except iostream.StreamClosedError:
-                pass
-            except Exception as ex:
-                _LOG.exception(ex)
-        elif not self._hold_downstream:
-            self._downstream.read_bytes(
-                num_bytes=_MAX_READ,
-                callback=self._on_downstream_read,
-                streaming_callback=self._on_downstream_read)
+        try:
+            self._downstream_parser.execute(data)
+        except StreamClosedError:
+            pass
+        except Exception as ex:
+            _LOG.exception(ex)
 
     def _on_upstream_read(self, data):
+        print('Writing downstream from upstream: {}'.format(len(data)))
         try:
             self._upstream_parser.execute(data)
-        except iostream.StreamClosedError:
+        except StreamClosedError:
             pass
         except Exception as ex:
             _LOG.exception(ex)
 
 
-class TornadoHttpProxy(tornado.tcpserver.TCPServer):
+class TornadoHttpProxy(TCPServer):
     """
     Subclass of the Tornado TCPServer that lets us set up the Pyrox proxy
     orchestrations.
