@@ -103,9 +103,9 @@ def _build_singleton_plfactories(config):
         filter_instances[cls.__name__] = cls()
 
     upstream = _build_singleton_plfactory_closure(
-        config.pipeline.upstream, filter_instances)
+        _resolve_filter_classes(config.pipeline.upstream), filter_instances)
     downstream = _build_singleton_plfactory_closure(
-        config.pipeline.downstream, filter_instances)
+        _resolve_filter_classes(config.pipeline.downstream), filter_instances)
     return upstream, downstream
 
 
