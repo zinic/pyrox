@@ -6,8 +6,8 @@ import tornado.process
 
 from .routing import RoutingHandler
 
-from pyrox.util.streaming import IOStream, StreamClosedError
-from pyrox.util.sserver import TCPServer
+from pyrox.tstream.iostream import IOStream, StreamClosedError
+from pyrox.tstream.tcpserver import TCPServer
 
 from pyrox.log import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,

@@ -10,6 +10,7 @@ import sys
 import re
 
 from datetime import timedelta
+
 from tornado import ioloop
 from tornado.log import gen_log, app_log
 from tornado.netutil import ssl_wrap_socket, ssl_match_hostname, SSLCertificateError
@@ -29,6 +30,10 @@ _ERRNO_WOULDBLOCK = (errno.EWOULDBLOCK, errno.EAGAIN)
 # These errnos indicate that a connection has been abruptly terminated.
 # They should be caught and handled less noisily than other errors.
 _ERRNO_CONNRESET = (errno.ECONNRESET, errno.ECONNABORTED, errno.EPIPE)
+
+
+_READ_CHUNK_SIZE = 4096
+
 
 class StreamClosedError(IOError):
     """Exception raised by `IOStream` methods when the stream is closed.
@@ -56,7 +61,7 @@ class BaseIOStream(object):
     def __init__(self, io_loop=None, max_buffer_size=None,
                  read_chunk_size=4096):
         self.io_loop = io_loop or ioloop.IOLoop.current()
-        self.max_buffer_size = max_buffer_size or 104857600
+        self.max_buffer_size = max_buffer_size or 10485760
         self.read_chunk_size = read_chunk_size
         self.error = None
         self._read_buffer = collections.deque()
@@ -424,12 +429,27 @@ class BaseIOStream(object):
         self._maybe_add_error_listener()
 
     def _read_to_buffer(self):
-        """Reads from the socket and appends the result to the read buffer.
+        """
+        Reads from the socket and appends the result to the read buffer.
 
         Returns the number of bytes read. Returns 0 if there is nothing
         to read (i.e. the read returns EWOULDBLOCK or equivalent). On
         error closes the socket and raises an exception.
+
+        This method will read upto the allowed max_buffer_size, in which
+        case if the buffer limit is reached, the read is placed back onto
+        the IOLoop for rescheduling. This happens immediately with the
+        hope that the underlying program code is reading quickly enough
+        to keep the buffer well drained.
         """
+        next_size = self._read_buffer_size +  self.read_chunk_size
+        if  next_size > self.max_buffer_size:
+            # Reschedule and treat this as a EWOULDBLOCK
+            self._add_io_state(ioloop.IOLoop.READ)
+            return 0
+
+        chunk = None
+
         try:
             chunk = self.read_from_fd()
         except (socket.error, IOError, OSError) as e:
@@ -442,18 +462,16 @@ class BaseIOStream(object):
                 return
             self.close(exc_info=True)
             raise
+
         if chunk is None:
             return 0
-        self._read_buffer.append(chunk)
-        self._read_buffer_size += len(chunk)
-        if self._read_buffer_size >= self.max_buffer_size:
-            gen_log.info("Reached maximum read buffer size of: {}".format(
-                self.max_buffer_size))
 
-            # Reschedule and treat this as a EWOULDBLOCK
-            self._add_io_state(ioloop.IOLoop.READ)
-            return 0
-        return len(chunk)
+        chunk_length = len(chunk)
+
+        self._read_buffer.append(chunk)
+        self._read_buffer_size += chunk_length
+
+        return chunk_length
 
     def _read_from_buffer(self):
         """Attempts to complete the currently-pending read from the buffer.
