@@ -103,10 +103,10 @@ def _build_singleton_plfactories(config):
         filter_instances[cls.__name__] = cls()
 
     upstream = _build_singleton_plfactory_closure(
-        config.pipeline.upstream, filter_instances)
+        _resolve_filter_classes(config.pipeline.upstream), filter_instances)
     downstream = _build_singleton_plfactory_closure(
-        config.pipeline.downstream, filter_instances)
-    return (upstream, downstream)
+        _resolve_filter_classes(config.pipeline.downstream), filter_instances)
+    return upstream, downstream
 
 
 def _build_plfactories(config):
@@ -114,7 +114,7 @@ def _build_plfactories(config):
         _resolve_filter_classes(config.pipeline.upstream))
     downstream = _build_plfactory_closure(
         _resolve_filter_classes(config.pipeline.downstream))
-    return (upstream, downstream)
+    return upstream, downstream
 
 
 def start_proxy(sockets, config):
@@ -173,14 +173,14 @@ def start_pyrox(other_cfg=None):
         bind_host[0], bind_host[1]))
 
     # Start Tornado
-    num_processess = config.core.processes
+    num_processes = config.core.processes
 
-    if num_processess <= 0:
-        num_processess = cpu_count()
+    if num_processes <= 0:
+        num_processes = cpu_count()
 
     global _active_children_pids
 
-    for i in range(num_processess):
+    for i in range(num_processes):
         pid = os.fork()
         if pid == 0:
             print('Starting process {}'.format(i))
@@ -207,4 +207,3 @@ def start_pyrox(other_cfg=None):
         _LOG.info('Child process {} exited with status {}'.format(
             pid, status))
         _active_children_pids.remove(pid)
-
