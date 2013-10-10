@@ -443,7 +443,10 @@ class BaseIOStream(object):
         to keep the buffer well drained.
         """
         next_size = self._read_buffer_size +  self.read_chunk_size
-        if  next_size > self.max_buffer_size:
+        if  next_size >= self.max_buffer_size:
+            gen_log.info("Reached maximum read buffer size of: {}".format(
+                self.max_buffer_size))
+
             # Reschedule and treat this as a EWOULDBLOCK
             self._add_io_state(ioloop.IOLoop.READ)
             return 0

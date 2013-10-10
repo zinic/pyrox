@@ -146,7 +146,8 @@ def start_proxy(sockets, config):
     http_proxy.add_sockets(sockets)
 
     # Start tornado
-    IOLoop.current().start()
+    import cProfile
+    cProfile.runctx('IOLoop.current().start()', globals(), locals())
 
 
 def start_pyrox(other_cfg=None):

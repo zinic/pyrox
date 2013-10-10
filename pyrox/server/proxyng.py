@@ -158,6 +158,7 @@ class DownstreamHandler(ProxyHandler):
                 self._response.to_bytes(),
                 callback=callback)
         elif is_chunked:
+            print('closing downstream chunk')
             self._upstream.write(_CHUNK_CLOSE)
 
 
@@ -205,7 +206,10 @@ class UpstreamHandler(ProxyHandler):
             if accumulator.size() > 0:
                 data = accumulator.bytes
 
-            _write_to_stream(self._downstream, data, True)
+            _write_to_stream(
+                self._downstream,
+                data,
+                is_chunked or self._chunked)
 
     def on_message_complete(self, is_chunked, keep_alive):
         callback = None if keep_alive else self._downstream.close
