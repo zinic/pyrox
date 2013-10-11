@@ -9,11 +9,10 @@ import ssl
 import sys
 import re
 
-from datetime import timedelta
-
 from tornado import ioloop
 from tornado.log import gen_log, app_log
-from tornado.netutil import ssl_wrap_socket, ssl_match_hostname, SSLCertificateError
+from tornado.netutil import ssl_wrap_socket, ssl_match_hostname,\
+    SSLCertificateError
 from tornado import stack_context
 from tornado.util import bytes_type
 
@@ -366,7 +365,7 @@ class BaseIOStream(object):
                 # Pretend to have a pending callback so that an EOF in
                 # _read_to_buffer doesn't trigger an immediate close
                 # callback. At the end of this method we'll either
-                # estabilsh a real pending callback via
+                # establish a real pending callback via
                 # _read_from_buffer or run the close callback.
                 #
                 # We need two try statements here so that
@@ -436,7 +435,7 @@ class BaseIOStream(object):
         to read (i.e. the read returns EWOULDBLOCK or equivalent). On
         error closes the socket and raises an exception.
 
-        This method will read upto the allowed max_buffer_size, in which
+        This method will read up to the allowed max_buffer_size, in which
         case if the buffer limit is reached, the read is placed back onto
         the IOLoop for rescheduling. This happens immediately with the
         hope that the underlying program code is reading quickly enough
