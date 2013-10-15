@@ -158,7 +158,6 @@ class DownstreamHandler(ProxyHandler):
                 self._response.to_bytes(),
                 callback=callback)
         elif is_chunked:
-            print('closing downstream chunk')
             self._upstream.write(_CHUNK_CLOSE)
 
 

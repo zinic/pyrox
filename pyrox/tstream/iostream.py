@@ -16,6 +16,8 @@ from tornado.netutil import ssl_wrap_socket, ssl_match_hostname,\
 from tornado import stack_context
 from tornado.util import bytes_type
 
+from datetime import timedelta
+
 try:
     from tornado.platform.posix import _set_nonblocking
 except ImportError:
@@ -30,6 +32,7 @@ _ERRNO_WOULDBLOCK = (errno.EWOULDBLOCK, errno.EAGAIN)
 # They should be caught and handled less noisily than other errors.
 _ERRNO_CONNRESET = (errno.ECONNRESET, errno.ECONNABORTED, errno.EPIPE)
 
+_ONE_MILLISECOND = timedelta(milliseconds=1)
 
 _READ_CHUNK_SIZE = 4096
 
@@ -60,7 +63,7 @@ class BaseIOStream(object):
     def __init__(self, io_loop=None, max_buffer_size=None,
                  read_chunk_size=4096):
         self.io_loop = io_loop or ioloop.IOLoop.current()
-        self.max_buffer_size = max_buffer_size or 10485760
+        self.max_buffer_size = max_buffer_size or 1048576
         self.read_chunk_size = read_chunk_size
         self.error = None
         self._read_buffer = collections.deque()
@@ -447,7 +450,8 @@ class BaseIOStream(object):
                 self.max_buffer_size))
 
             # Reschedule and treat this as a EWOULDBLOCK
-            self._add_io_state(ioloop.IOLoop.READ)
+            # self._add_io_state(ioloop.IOLoop.READ)
+            self.io_loop.add_timeout(_ONE_MILLISECOND, self._handle_read)
             return 0
 
         chunk = None
