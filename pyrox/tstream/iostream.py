@@ -148,7 +148,6 @@ class IOHandler(object):
     def close(self):
         """Close this stream."""
         if self._socket is not None:
-            print('Closing fd:{}'.format(self._socket.fileno()))
             self._event_loop.remove_handler(self._socket.fileno())
             self._event_loop.add_timeout(100, self._socket.close)
             self._socket = None

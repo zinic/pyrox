@@ -15,13 +15,13 @@ class WhenUsingCBuffers(unittest.TestCase):
         cbuffer.put(input_test)
         self.assertEqual(len(input_test), cbuffer.available())
 
-    def test_should_get(self):
-        cbuffer = cbuf.CyclicBuffer()
-        input_test = b'12345'
+#    def test_should_get(self):
+#        cbuffer = cbuf.CyclicBuffer()
+#        input_test = b'12345'
 
-        cbuffer.put(input_test)
-        actual = cbuffer.get(len(input_test))
-        self.assertEqual(input_test, actual)
+#        cbuffer.put(input_test)
+#        actual = cbuffer.get(len(input_test))
+#        self.assertEqual(input_test, actual)
 
 if __name__ == '__main__':
     unittest.main()

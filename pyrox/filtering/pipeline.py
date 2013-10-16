@@ -197,6 +197,12 @@ class HttpFilterPipeline(object):
         self._resp_head_chain = list()
         self._resp_body_chain = list()
 
+    def intercepts_req_body(self):
+        return len(self._req_body_chain) > 0
+
+    def intercepts_resp_body(self):
+        return len(self._resp_body_chain) > 0
+
     def add_filter(self, http_filter):
         filter_methods = inspect.getmembers(http_filter, inspect.ismethod)
 

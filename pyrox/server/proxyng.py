@@ -110,14 +110,14 @@ class DownstreamHandler(ProxyHandler):
         # Execute against the pipeline
         action = self._filter_pl.on_request_head(self._http_msg)
 
-        # If there's a content length, negotiate the tansfer encoding
-        self._http_msg.header('connection').values = ['keep-alive']
+        if self._filter_pl.intercepts_resp_body():
 
-        if self._http_msg.get_header('content-length'):
-            self._http_msg.remove_header('content-length')
-            self._http_msg.remove_header('transfer-encoding')
+            # If there's a content length, negotiate the tansfer encoding
+            if self._http_msg.get_header('content-length'):
+                self._http_msg.remove_header('content-length')
+                self._http_msg.remove_header('transfer-encoding')
 
-            self._http_msg.header('transfer-encoding').values.append('chunked')
+                self._http_msg.header('transfer-encoding').values.append('chunked')
 
         # If we're rejecting then we're not going to connect to upstream
         if action.is_rejecting():
@@ -182,13 +182,14 @@ class UpstreamHandler(ProxyHandler):
     def on_headers_complete(self):
         action = self._filter_pl.on_response_head(self._http_msg)
 
-        # If there's a content length, negotiate the tansfer encoding
-        if self._http_msg.get_header('content-length'):
-            self._chunked = True
-            self._http_msg.remove_header('content-length')
-            self._http_msg.remove_header('transfer-encoding')
+        if self._filter_pl.intercepts_resp_body():
+            # If there's a content length, negotiate the tansfer encoding
+            if self._http_msg.get_header('content-length'):
+                self._chunked = True
+                self._http_msg.remove_header('content-length')
+                self._http_msg.remove_header('transfer-encoding')
 
-            self._http_msg.header('transfer-encoding').values.append('chunked')
+                self._http_msg.header('transfer-encoding').values.append('chunked')
 
         if action.is_rejecting():
             self._rejected = True
