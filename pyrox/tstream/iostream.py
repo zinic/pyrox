@@ -228,7 +228,7 @@ class IOHandler(object):
                 read = self._socket.recv_into(chunk, self._recv_chunk_size)
 
                 if read == 0:
-                    self.stop_recv()
+                    self.close()
                     break
 
                 read_buffer.extend(chunk[:read])

@@ -6,6 +6,7 @@ dist/
 *.pyc
 pyrox/http/parser.c
 pyrox/http/model_util.c
+pyrox/util/cbuf.c
 *.so
 .idea
 *.egg-info/

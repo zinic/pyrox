@@ -340,13 +340,12 @@ class ProxyConnection(object):
                 callback=self._on_downstream_read)
 
     def _on_downstream_close(self):
-        print('downstream closed')
         self._upstream_tracker.destroy()
         self._downstream_parser.destroy()
 
     def _on_pipe_broken(self):
-        if not self._downstream.closed() and not self._downstream.closed():
-            self._downstream.close()
+        #if not self._downstream.closed() and not self._downstream.closed():
+        #    self._downstream.close()
         if self._upstream_parser:
             self._upstream_parser.destroy()
 
