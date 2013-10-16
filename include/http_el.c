@@ -199,8 +199,8 @@ typedef enum {
 // Supporting functions
 
 pbuffer * init_pbuffer(size_t size) {
-    pbuffer *buffer = (pbuffer *) malloc(sizeof(pbuffer));
-    buffer->bytes = (char *) malloc(sizeof(char) * size);
+    pbuffer *buffer = malloc(sizeof(pbuffer));
+    buffer->bytes = malloc(sizeof(char) * size);
     buffer->position = 0;
     buffer->size = size;
 
@@ -370,7 +370,9 @@ void set_header_state(http_parser *parser, header_state state) {
 void reset_http_parser(http_parser *parser) {
     parser->bytes_read = 0;
     parser->status_code = 0;
+
     parser->flags = 0;
+
     parser->content_length = 0;
     parser->http_major = 0;
     parser->http_minor = 0;

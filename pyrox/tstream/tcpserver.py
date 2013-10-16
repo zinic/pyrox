@@ -5,7 +5,7 @@ import os
 import socket
 import ssl
 
-from pyrox.tstream.iostream import IOStream, SSLIOStream
+from pyrox.tstream.iostream import IOStream, SSLIOStream, IOHandler
 
 from tornado import process
 from tornado.log import app_log
@@ -224,8 +224,7 @@ class TCPServer(object):
                 stream = SSLIOStream(connection, io_loop=self.io_loop,
                                      max_buffer_size=self.max_buffer_size)
             else:
-                stream = IOStream(connection, io_loop=self.io_loop,
-                                  max_buffer_size=self.max_buffer_size)
+                stream = IOHandler(connection, event_loop=self.io_loop)
             self.handle_stream(stream, address)
         except Exception:
             app_log.error("Error in connection callback", exc_info=True)

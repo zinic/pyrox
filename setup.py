@@ -57,13 +57,23 @@ def package_c():
         extensions.append(Extension(
             'pyrox.http.parser',
             include_dirs=['include/'],
-            sources=['include/http_el.c', 'pyrox/http/parser.c'],
+            sources=[
+                'include/http_el.c',
+                'pyrox/http/parser.c'],
             extra_compile_args=COMPILER_ARGS))
 
     if os.path.isfile('pyrox/http/model_util.c'):
         extensions.append(Extension(
             'pyrox.http.model_util',
             sources=['pyrox/http/model_util.c']))
+
+    if os.path.isfile('pyrox/util/cbuf.c'):
+        extensions.append(Extension(
+            'pyrox.util.cbuf',
+            include_dirs=['include/'],
+            sources=[
+                'include/cbuf.c',
+                'pyrox/util/cbuf.c']))
 
     return extensions
 
