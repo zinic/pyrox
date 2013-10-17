@@ -5,7 +5,7 @@ import os
 import socket
 import ssl
 
-from pyrox.tstream.iostream import IOStream, SSLIOStream, IOHandler
+from pyrox.tstream.iostream import IOHandler, SSLIOHandler, IOHandler
 
 from tornado import process
 from tornado.log import app_log
@@ -188,7 +188,7 @@ class TCPServer(object):
             sock.close()
 
     def handle_stream(self, stream, address):
-        """Override to handle a new `.IOStream` from an incoming connection."""
+        """Override to handle a new `.IOHandler` from an incoming connection."""
         raise NotImplementedError()
 
     def _handle_connection(self, connection, address):
@@ -212,7 +212,7 @@ class TCPServer(object):
                 # (Linux). If it returns ENOTCONN, this error is
                 # silently swallowed by the ssl module, so we need to
                 # catch another error later on (AttributeError in
-                # SSLIOStream._do_ssl_handshake).
+                # SSLIOHandler._do_ssl_handshake).
                 # To test this behavior, try nmap with the -sT flag.
                 # https://github.com/facebook/tornado/pull/750
                 if err.args[0] in (errno.ECONNABORTED, errno.EINVAL):
@@ -221,7 +221,7 @@ class TCPServer(object):
                     raise
         try:
             if self.ssl_options is not None:
-                stream = SSLIOStream(connection, io_loop=self.io_loop,
+                stream = SSLIOHandler(connection, io_loop=self.io_loop,
                                      max_buffer_size=self.max_buffer_size)
             else:
                 stream = IOHandler(connection, event_loop=self.io_loop)
