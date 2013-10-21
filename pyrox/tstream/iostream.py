@@ -1,6 +1,5 @@
 from __future__ import absolute_import, division, print_function, with_statement
 
-import traceback
 import collections
 import errno
 import numbers
@@ -53,6 +52,7 @@ class IOHandler(object):
     def __init__(self, sock, event_loop=None):
         # Socket init
         self._socket = sock
+        self._sfileno = sock.fileno()
 
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._socket.setblocking(0)
@@ -65,10 +65,10 @@ class IOHandler(object):
         self._closing = False
 
         # Callbacks
-        self._connect_callback = None
-        self._close_callback = None
-        self._recv_callback = None
-        self._send_callback = None
+        self._on_connect_cb = None
+        self._close_cb = None
+        self._recv_cb = None
+        self._send_complete_cb = None
 
         # Buffer management
         self._send_queue = collections.deque()
@@ -85,33 +85,37 @@ class IOHandler(object):
         """
         Alias for removing the read interest from the event handler.
         """
-        gen_log.info('Halting recv events for stream(fd:{})'.format(
-            self._socket.fileno()))
-        self._drop_event_interest(self._event_loop.READ)
+        if not self._closing:
+            gen_log.debug('Halting recv events for stream(fd:{})'.format(
+                self._sfileno))
+            self._drop_event_interest(self._event_loop.READ)
 
     def stop_send(self):
         """
         Alias for removing the send interest from the event handler.
         """
-        gen_log.info('Halting send events for stream(fd:{})'.format(
-            self._socket.fileno()))
-        self._drop_event_interest(self._event_loop.WRITE)
+        if not self._closing:
+            gen_log.debug('Halting send events for stream(fd:{})'.format(
+                self._sfileno))
+            self._drop_event_interest(self._event_loop.WRITE)
 
     def resume_recv(self):
         """
         Alias for adding the read interest to the event handler.
         """
-        gen_log.info('Resuming recv events for stream(fd:{})'.format(
-            self._socket.fileno()))
-        self._add_event_interest(self._event_loop.READ)
+        if not self._closing:
+            gen_log.debug('Resuming recv events for stream(fd:{})'.format(
+                self._sfileno))
+            self._add_event_interest(self._event_loop.READ)
 
     def resume_send(self):
         """
         Alias for adding the send interest to the event handler.
         """
-        gen_log.info('Resuming send events for stream(fd:{})'.format(
-            self._socket.fileno()))
-        self._add_event_interest(self._event_loop.WRITE)
+        if not self._closing:
+            gen_log.debug('Resuming send events for stream(fd:{})'.format(
+                self._sfileno))
+            self._add_event_interest(self._event_loop.WRITE)
 
     def on_recv(self, callback):
         """
@@ -120,31 +124,27 @@ class IOHandler(object):
         """
         self._check_closed()
 
-        if callback:
-            assert callable(callback)
-            self._recv_callback = stack_context.wrap(callback)
+        if not self._closing:
+            assert callback is None or callable(callback)
+            self._recv_cb = stack_context.wrap(callback)
             self.resume_recv()
 
-    def on_send(self, callback):
+    def on_send_complete(self, callback=None):
         """
         Sets a callback for completed send events and then sets the send
         interest on the event handler.
         """
-        self._check_closed()
-
-        if callback:
-            assert callable(callback)
-            self._send_callback = stack_context.wrap(callback)
-            self.resume_send()
+        if not self._closing:
+            assert callback is None or callable(callback)
+            self._send_complete_cb = stack_context.wrap(callback)
 
     def on_close(self, callback):
         """
         Sets a callback to be called after this stream closes.
         """
-        self._check_closed()
-
-        assert callback is None or callable(callback)
-        self._close_callback = stack_context.wrap(callback)
+        if not self._closing:
+            assert callback is None or callable(callback)
+            self._close_cb = stack_context.wrap(callback)
 
     def receiving(self):
         """Returns True if we are currently receiving from the stream."""
@@ -164,8 +164,8 @@ class IOHandler(object):
             raise TypeError("bytes/bytearray/unicode/str objects only")
 
         self._send_queue.append(msg)
-        self.on_send(callback)
-        self._add_event_interest(self._event_loop.WRITE)
+        self.on_send_complete(callback)
+        self.resume_send()
 
     def connect(self, address, callback=None, server_hostname=None):
         self._connecting = True
@@ -174,43 +174,42 @@ class IOHandler(object):
             self._socket.connect(address)
         except socket.error as e:
             if (e.args[0] != errno.EINPROGRESS and e.args[0] not in _ERRNO_WOULDBLOCK):
-                gen_log.warning("Connect error on fd %d: %s", self._socket.fileno(), e)
+                gen_log.warning("Connect error on fd %d: %s", self._sfileno, e)
                 self.close()
                 return
 
-        self._connect_callback = stack_context.wrap(callback)
+        self._on_connect_cb = stack_context.wrap(callback)
         self._add_event_interest(self._event_loop.WRITE)
 
     def close(self):
-        self._check_closed()
-        self._closing = True
-
-        gen_log.info('Closing stream(fd: {})'.format(self._socket.fileno()))
-
-        if self.sending():
-            if self._send_callback:
-                # If there's already a callback waiting
-                def close_wrapper():
-                    self._run_callback(self._send_callback)
-                    self._close()
-                self._send_callback = close_wrapper
+        if not self._closing:
+            if self.sending():
+                self.on_send_complete(self._close)
             else:
-                self._send_callback = self._close
-        else:
-            self._close()
+                self._close()
+
+            self._closing = True
 
     def _close(self):
         """Close this stream."""
-        self._event_loop.remove_handler(self._socket.fileno())
+        gen_log.debug('Closing stream(fd: {})'.format(self._sfileno))
+
+        self._event_loop.remove_handler(self._sfileno)
         self._event_loop.add_timeout(100, self._socket.close)
         self._socket = None
 
-        if self._close_callback:
-            self._run_callback(self._close_callback)
+        if self._close_cb:
+            self._run_callback(self._close_cb)
 
     def _check_closed(self):
-        if self.closed():
+        if self._socket is None:
             raise StreamClosedError('Stream closing or closed.')
+
+    def _do_recv(self, recv_buffer):
+        return self._socket.recv_into(recv_buffer, self._recv_chunk_size)
+
+    def _do_send(self, send_buffer):
+        return self._socket.send(send_buffer)
 
     def _handle_events(self, fd, events):
         if self._socket is None:
@@ -218,37 +217,37 @@ class IOHandler(object):
             return
 
         try:
-            if not self.closed() and events & self._event_loop.READ:
+            if socket is not None and events & self._event_loop.READ:
                 self._handle_recv()
 
-            if not self.closed() and events & self._event_loop.WRITE:
+            if socket is not None and events & self._event_loop.WRITE:
                 if self._connecting:
                     self._handle_connect()
                 else:
                     self._handle_send()
 
-            if not self.closed() and events & self._event_loop.ERROR:
+            if socket is not None and events & self._event_loop.ERROR:
                 # We may have queued up a user callback so don't close until
                 # they've had a chance to run.
                 self._event_loop.add_callback(self.close)
         except Exception:
-            if not self.closed():
-                self.close()
-
+            self.close()
             raise
 
     def _handle_recv(self):
-        # gen_log.info('Reading from stream(fd: {})'.format(self._socket.fileno()))
-
         read_buffer = bytearray()
         chunk = bytearray(self._max_recv_buffer_size)
 
         try:
             while True:
                 if len(read_buffer) + self._recv_chunk_size >= self._max_recv_buffer_size:
+                    self._event_loop.add_callback(self._handle_recv)
                     break
 
-                read = self._socket.recv_into(chunk, self._recv_chunk_size)
+                read = self._do_recv(chunk)
+
+                if read is None or read < 0:
+                    break
 
                 if read == 0:
                     self.close()
@@ -272,50 +271,44 @@ class IOHandler(object):
                 return
             raise
 
-        if len(read_buffer) > 0 and self._recv_callback:
-            self._run_callback(self._recv_callback, read_buffer)
+        if len(read_buffer) > 0 and self._recv_cb:
+            self._run_callback(self._recv_cb, read_buffer)
 
     def _handle_send(self):
-        # gen_log.info('Sending to stream(fd: {})'.format(self._socket.fileno()))
-
         if not self.sending():
-            gen_log.error("Shouldn't have handled a send event")
+            if self._send_complete_cb:
+                callback = self._send_complete_cb
+                self._send_complete_cb = None
+                self._run_callback(callback)
+            self.stop_send()
             return
 
         sent = None
-        msg = self._send_queue.popleft()
 
         try:
-            sent = self._socket.send(msg[self._last_send_idx:])
+            while len(self._send_queue) > 0:
+                msg = self._send_queue.popleft()
+                sent = self._do_send(msg[self._last_send_idx:])
 
-            if (len(msg) - self._last_send_idx) == sent:
-                self._last_send_idx = 0
-            else:
-                self._send_queue.appendleft(msg)
-                self._last_send_idx += sent
+                if (len(msg) - self._last_send_idx) == sent:
+                    self._last_send_idx = 0
+                else:
+                    self._send_queue.appendleft(msg)
+                    self._last_send_idx += sent
         except (socket.error, IOError, OSError) as ex:
             if ex.args[0] in _ERRNO_WOULDBLOCK:
                 self._send_queue.appendleft(msg)
-                return
 
-            self.close()
-
-            if ex.args[0] in _ERRNO_CONNRESET:
+            elif ex.args[0] not in _ERRNO_CONNRESET:
                 # Broken pipe errors are usually caused by connection
                 # reset, and its better to not log EPIPE errors to
                 # minimize log spam
                 gen_log.warning(
-                    "Write error on %d: %s",
-                    self._socket.fileno(),
-                    ex)
-            return
-
-        # Did we finish sending everything?
-        if len(self._send_queue) == 0:
-            self.stop_send()
-
-            if self._send_callback:
-                self._run_callback(self._send_callback)
+                        "Write error on %d: %s",
+                        self._sfileno,
+                        ex)
+            else:
+                self.close()
 
     def _handle_connect(self):
         err = self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
@@ -328,13 +321,13 @@ class IOHandler(object):
             # in that case a connection failure would be handled by the
             # error path in _handle_events instead of here.
             gen_log.warning("Connect error on fd %d: %s",
-                            self._socket.fileno(), errno.errorcode[err])
+                            self._sfileno, errno.errorcode[err])
             self.close()
             return
 
-        if self._connect_callback is not None:
-            callback = self._connect_callback
-            self._connect_callback = None
+        if self._on_connect_cb is not None:
+            callback = self._on_connect_cb
+            self._on_connect_cb = None
             self._run_callback(callback)
 
         self._connecting = False
@@ -348,8 +341,8 @@ class IOHandler(object):
             # inside our blanket exception handler rather than outside.
             with stack_context.NullContext():
                 callback(*args, **kwargs)
-        except:
-            gen_log.error("Uncaught exception, closing connection.")
+        except Exception as ex:
+            gen_log.error("Uncaught exception: %s", ex)
 
             # Close the socket on an uncaught exception from a user callback
             # (It would eventually get closed when the socket object is
@@ -379,14 +372,14 @@ class IOHandler(object):
             return
 
         self._event_loop.update_handler(
-            self._socket.fileno(), event_interest)
+            self._sfileno, event_interest)
 
     def _init_event_interest(self, event_interest):
         self._event_interest = event_interest
         """initialize the ioloop event handler"""
         with stack_context.NullContext():
             self._event_loop.add_handler(
-                self._socket.fileno(),
+                self._sfileno,
                 self._handle_events,
                 self._event_interest)
 
@@ -412,7 +405,7 @@ class SSLIOHandler(IOHandler):
         self._ssl_accepting = True
         self._handshake_reading = False
         self._handshake_writing = False
-        self._ssl_connect_callback = None
+        self._ssl_on_connect_cb = None
         self._server_hostname = None
 
         # If the socket is already connected, attempt to start the handshake.
@@ -447,32 +440,36 @@ class SSLIOHandler(IOHandler):
                 return
             elif err.args[0] in (ssl.SSL_ERROR_EOF,
                                  ssl.SSL_ERROR_ZERO_RETURN):
-                return self.close(exc_info=True)
+                self.close()
+                return
             elif err.args[0] == ssl.SSL_ERROR_SSL:
                 try:
                     peer = self._socket.getpeername()
                 except Exception:
                     peer = '(not connected)'
                 gen_log.warning("SSL Error on %d %s: %s",
-                                self._socket.fileno(), peer, err)
-                return self.close(exc_info=True)
+                                self._sfileno, peer, err)
+                self.close()
+                return
             raise
         except socket.error as err:
             if err.args[0] in _ERRNO_CONNRESET:
-                return self.close(exc_info=True)
+                self.close()
+                return
         except AttributeError:
             # On Linux, if the connection was reset before the call to
             # wrap_socket, do_handshake will fail with an
             # AttributeError.
-            return self.close(exc_info=True)
+            self.close()
+            return
         else:
             self._ssl_accepting = False
             if not self._verify_cert(self._socket.getpeercert()):
                 self.close()
                 return
-            if self._ssl_connect_callback is not None:
-                callback = self._ssl_connect_callback
-                self._ssl_connect_callback = None
+            if self._ssl_on_connect_cb is not None:
+                callback = self._ssl_on_connect_cb
+                self._ssl_on_connect_cb = None
                 self._run_callback(callback)
 
     def _verify_cert(self, peercert):
@@ -497,7 +494,7 @@ class SSLIOHandler(IOHandler):
         try:
             ssl_match_hostname(peercert, self._server_hostname)
         except SSLCertificateError:
-            gen_log.warning("Invalid SSL certificate", exc_info=True)
+            gen_log.warning("Invalid SSL certificate", )
             return False
         else:
             return True
@@ -517,7 +514,7 @@ class SSLIOHandler(IOHandler):
     def connect(self, address, callback=None, server_hostname=None):
         # Save the user's callback and run it after the ssl handshake
         # has completed.
-        self._ssl_connect_callback = stack_context.wrap(callback)
+        self._ssl_on_connect_cb = stack_context.wrap(callback)
         self._server_hostname = server_hostname
         super(SSLIOHandler, self).connect(address, callback=None)
 
@@ -533,54 +530,22 @@ class SSLIOHandler(IOHandler):
                                       do_handshake_on_connect=False)
         super(SSLIOHandler, self)._handle_connect()
 
-    def _handle_recv(self):
+    def _do_recv(self, recv_buffer):
         if self._ssl_accepting:
             # If the handshake hasn't finished yet, there can't be anything
             # to read (attempting to read may or may not raise an exception
             # depending on the SSL version)
-            return None
-
-        read_buffer = bytearray()
-        chunk = bytearray(self._max_recv_buffer_size)
+            return -1
 
         try:
-            while True:
-                if len(read_buffer) + self._recv_chunk_size >= self._max_recv_buffer_size:
-                    break
-
-                read = self._socket.recv_into(chunk, self._recv_chunk_size)
-
-                if read == 0:
-                    self.close()
-                    break
-
-                read_buffer.extend(chunk[:read])
-
-                if read != self._recv_chunk_size:
-                    break
+            return self._socket.recv_into(recv_buffer, self._recv_chunk_size)
         except ssl.SSLError as e:
             # SSLError is a subclass of socket.error, so this except
             # block must come first.
             if e.args[0] == ssl.SSL_ERROR_WANT_READ:
-                return None
+                return -1
             else:
                 raise
-        except (socket.error, IOError, OSError) as ex:
-            if ex.args[0] in _ERRNO_WOULDBLOCK:
-                return
 
-            if len(self._send_queue) > 0:
-                self.on_send(self.close)
-            else:
-                self.close()
-
-            # ssl.SSLError is a subclass of socket.error
-            if ex.args[0] in _ERRNO_CONNRESET:
-                # Treat ECONNRESET as a connection close rather than
-                # an error to minimize log spam (the exception will
-                # be available on self.error for apps that care).
-                return
-            raise
-
-        if len(read_buffer) > 0 and self._recv_callback:
-            self._run_callback(self._recv_callback, read_buffer)
+    def _do_send(self, send_buffer):
+        return self._socket.send(send_buffer)

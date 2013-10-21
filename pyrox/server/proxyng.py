@@ -12,6 +12,7 @@ from pyrox.tstream.tcpserver import TCPServer
 from pyrox.log import get_logger
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
+import traceback
 
 _LOG = get_logger(__name__)
 
@@ -56,6 +57,7 @@ class ProxyHandler(ParserDelegate):
     def __init__(self, filter_pl, http_msg):
         self._filter_pl = filter_pl
         self._http_msg = http_msg
+        self._chunked = False
         self._last_header_field = None
         self._rejected = False
 
@@ -82,22 +84,13 @@ class DownstreamHandler(ProxyHandler):
         super(DownstreamHandler, self).__init__(filter_pl, HttpRequest())
         self._downstream = downstream
         self._upstream = None
-        self._body_fragment = None
+        self._preread_body = None
         self._connect_upstream = connect_upstream
 
-    def _store_body(self, body_fragment):
-        if self._body_fragment:
-            self._body_fragment.extend(body_fragment)
-        else:
-            self._body_fragment = body_fragment
-
-    def _get_body(self, next_body_fragment):
-        body_fragment = next_body_fragment
-        if self._body_fragment:
-            self._body_fragment.extend(body_fragment)
-            body_fragment = self._body_fragment
-            self._body_fragment = None
-        return body_fragment
+    def _store_chunk(self, body_fragment):
+        if not self._preread_body:
+            self._preread_body = bytearray()
+        self._preread_body.extend(body_fragment)
 
     def on_req_method(self, method):
         self._http_msg.method = method
@@ -111,6 +104,7 @@ class DownstreamHandler(ProxyHandler):
 
         # If we are intercepting the request body do some negotiation
         if self._filter_pl.intercepts_req_body():
+            self._chunked = True
 
             # If there's a content length, negotiate the tansfer encoding
             if self._http_msg.get_header('content-length'):
@@ -124,6 +118,10 @@ class DownstreamHandler(ProxyHandler):
             self._rejected = True
             self._response = action.payload
         else:
+            # Hold up on the client side until we're done negotiating
+            # connections.
+            self._downstream.stop_recv()
+
             # We're routing to upstream; we need to know where to go
             if action.is_routing():
                 self._connect_upstream(self._http_msg, action.payload)
@@ -131,6 +129,12 @@ class DownstreamHandler(ProxyHandler):
                 self._connect_upstream(self._http_msg)
 
     def on_body(self, bytes, length, is_chunked):
+        self._chunked = is_chunked
+
+        if self._downstream.receiving():
+            # Hold up on the client side until we're done with this chunk
+            self._downstream.stop_recv()
+
         # Rejections simply discard the body
         if not self._rejected:
             accumulator = AccumulationStream()
@@ -141,30 +145,32 @@ class DownstreamHandler(ProxyHandler):
             if accumulator.size() > 0:
                 data = accumulator.bytes
 
-            # Hold up on the client side until we're done sending this chunk
-            self._downstream.stop_recv()
-
             if self._upstream:
                 # When we write to the stream set the callback to resume
                 # reading from downstream.
-                _write_to_stream(
-                    self._upstream,
-                    self._get_body(data),
-                    is_chunked,
+                _write_to_stream(self._upstream, data, is_chunked,
                     self._downstream.resume_recv)
             else:
                 # If we're not connected upstream, store the fragment
                 # for later
-                self._store_body(data)
+                self._store_chunk(data)
+
+    def on_upstream_connect(self, upstream):
+        self._upstream = upstream
+
+        if self._preread_body and len(self._preread_body) > 0:
+            _write_to_stream(self._upstream, self._preread_body,
+                self._chunked, self._downstream.resume_recv)
+            self._preread_body = None
 
     def on_message_complete(self, is_chunked, keep_alive):
-        if self._rejected:
-            callback = None if keep_alive else self._downstream.close
+        if keep_alive:
+            self._http_msg = HttpRequest()
 
-            self._downstream.send(
-                self._response.to_bytes(),
-                callback=callback)
-        elif is_chunked:
+        if self._rejected:
+            self._downstream.send(self._response.to_bytes())
+        elif is_chunked or self._chunked:
+            # Finish the last chunk.
             self._upstream.send(_CHUNK_CLOSE)
 
 
@@ -179,7 +185,6 @@ class UpstreamHandler(ProxyHandler):
         super(UpstreamHandler, self).__init__(filter_pl, HttpResponse())
         self._downstream = downstream
         self._upstream = upstream
-        self._chunked = False
 
     def on_status(self, status_code):
         self._http_msg.status = str(status_code)
@@ -227,29 +232,29 @@ class UpstreamHandler(ProxyHandler):
                 self._upstream.resume_recv)
 
     def on_message_complete(self, is_chunked, keep_alive):
-        callback = None
+        callback = self._upstream.close
+        self._upstream.stop_recv()
 
-        # Hold up on the client side until we've decided what to do next...
-        # self._downstream.stop_recv()
-
-        if not keep_alive:
-            self._upstream.close()
+        if keep_alive:
+            self._http_msg = HttpResponse()
+            callback = self._downstream.resume_recv
 
         if self._rejected:
             # Serialize our message to them
-            self._downstream.send(self._http_msg.to_bytes())
+            self._downstream.send(self._http_msg.to_bytes(), callback)
         elif is_chunked or self._chunked:
             # Finish the last chunk.
-            self._downstream.send(_CHUNK_CLOSE)
-
+            self._downstream.send(_CHUNK_CLOSE, callback)
+        else:
+            callback()
 
 class ConnectionTracker(object):
 
-    def __init__(self, on_live_cb, pipe_broken_cb):
+    def __init__(self, on_stream_live, on_target_closed):
         self._streams = dict()
         self._target_in_use = None
-        self._on_live_cb = on_live_cb
-        self._pipe_broken_cb = pipe_broken_cb
+        self._on_stream_live = on_stream_live
+        self._on_target_closed = on_target_closed
 
     def destroy(self):
         for stream in self._streams.values():
@@ -262,7 +267,7 @@ class ConnectionTracker(object):
 
         if live_stream:
             # Make the cb ourselves since the socket's already connected
-            self._on_live_cb(live_stream)
+            self._on_stream_live(live_stream)
         else:
             self._new_connection(target)
 
@@ -275,13 +280,14 @@ class ConnectionTracker(object):
         self._streams[target] = live_stream
 
         def on_close():
-            if self._target_in_use == target:
-                self._pipe_broken_cb()
             del self._streams[target]
+            if self._target_in_use == target:
+                self.destroy()
+                self._on_target_closed()
         live_stream.on_close(on_close)
 
         def on_connect():
-            self._on_live_cb(live_stream)
+            self._on_stream_live(live_stream)
         live_stream.connect(target, on_connect)
 
 
@@ -297,7 +303,7 @@ class ProxyConnection(object):
         self._upstream_parser = None
         self._upstream_tracker = ConnectionTracker(
             self._on_upstream_live,
-            self._on_pipe_broken)
+            self._on_upstream_close)
 
         # Setup all of the wiring for downstream
         self._downstream = downstream
@@ -334,27 +340,29 @@ class ProxyConnection(object):
             self._upstream_parser.destroy()
         self._upstream_parser = ResponseParser(self._upstream_handler)
 
-        # Send the proxied request object
-        upstream.send(self._request.to_bytes())
-
         # Set the read callback
         upstream.on_recv(self._on_upstream_read)
+
+        # Send the proxied request object
+        upstream.send(self._request.to_bytes())
 
         # Drop the ref to the proxied request head
         self._request = None
 
         # Set up our downstream handler
-        self._downstream_handler._upstream = upstream
-        self._downstream.resume_recv()
+        self._downstream_handler.on_upstream_connect(upstream)
 
     def _on_downstream_close(self):
-        print('Downstream closed')
         self._upstream_tracker.destroy()
         self._downstream_parser.destroy()
+        self._downstream_parser = None
 
-    def _on_pipe_broken(self):
-        if self._upstream_parser:
-            self._upstream_parser.destroy()
+    def _on_upstream_close(self):
+        if not self._downstream.closed():
+            self._downstream.close()
+
+        self._upstream_parser.destroy()
+        self._upstream_parser = None
 
     def _on_downstream_read(self, data):
         try:
