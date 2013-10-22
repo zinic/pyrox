@@ -238,7 +238,7 @@ class IOHandler(object):
                 else:
                     self._handle_send()
 
-            if self._socket is not None and events & self._event_loop.ERROR:
+            if not self.closed() and events & self._event_loop.ERROR:
                 self._handle_error(
                     self._socket.getsockopt(
                         socket.SOL_SOCKET, socket.SO_ERROR))
