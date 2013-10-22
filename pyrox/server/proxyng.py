@@ -386,6 +386,8 @@ class ProxyConnection(object):
 
     def _on_downstream_error(self, error):
         _LOG.error('Downstream error: {}'.format(error))
+        if not self._downstream.closed():
+            self._downstream.close()
 
     def _on_upstream_error(self, error):
         if not self._downstream.closed():

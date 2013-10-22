@@ -228,37 +228,37 @@ class IOHandler(object):
         if self._socket is None:
             gen_log.warning("Got events for closed stream %d", fd)
             return
-
         try:
-            if socket is not None and events & self._event_loop.ERROR:
-                self._handle_error(
-                    self._socket.getsockopt(
-                        socket.SOL_SOCKET, socket.SO_ERROR))
-                return
-
-            if socket is not None and events & self._event_loop.READ:
+            if self._socket is not None and events & self._event_loop.READ:
                 self._handle_recv()
 
-            if socket is not None and events & self._event_loop.WRITE:
+            if self._socket is not None and events & self._event_loop.WRITE:
                 if self._connecting:
                     self._handle_connect()
                 else:
                     self._handle_send()
+
+            if self._socket is not None and events & self._event_loop.ERROR:
+                self._handle_error(
+                    self._socket.getsockopt(
+                        socket.SOL_SOCKET, socket.SO_ERROR))
         except Exception:
             self.close()
             raise
 
     def _handle_error(self, error):
-        if self._error_cb is not None:
-            callback = self._error_cb
-            self._error_cb = None
-            self._run_callback(callback, error)
+        try:
+            if self._error_cb is not None:
+                callback = self._error_cb
+                self._error_cb = None
+                self._run_callback(callback, error)
 
-        gen_log.warning("Error on stream(fd:%d) caught: %s",
-           self._sfileno, errno.errorcode[error])
-
-       # On error, close the FD
-        self.close()
+            if error not in _ERRNO_CONNRESET:
+                gen_log.warning("Error on stream(fd:%d) caught: %s",
+                    self._sfileno, errno.errorcode[error])
+        finally:
+            # On error, close the FD
+            self.close()
 
     def _handle_recv(self):
         read_buffer = bytearray()
