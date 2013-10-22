@@ -49,7 +49,7 @@ class StreamClosedError(IOError):
 
 class IOHandler(object):
 
-    def __init__(self, sock, event_loop=None):
+    def __init__(self, sock, event_loop=None, recv_chunk_size=4096):
         # Error tracking
         self.error = 0
 
@@ -74,13 +74,12 @@ class IOHandler(object):
         self._send_complete_cb = None
         self._error_cb = None
 
-        # Buffer management
-        self._send_queue = collections.deque()
-        self._recv_queue = collections.deque()
-
+        # Sending and receiving management
         self._last_send_idx = 0
-        self._recv_chunk_size = 4096
-        self._max_recv_buffer_size = self._recv_chunk_size * 1024
+        self._send_queue = collections.deque()
+
+        self._recv_chunk_size = recv_chunk_size
+        self._recv_buffer = bytearray(self._recv_chunk_size)
 
         # Mark our initial interests
         self._init_event_interest(self._event_loop.ERROR)
@@ -261,34 +260,18 @@ class IOHandler(object):
             self.close()
 
     def _handle_recv(self):
-        read_buffer = bytearray()
-        chunk = bytearray(self._max_recv_buffer_size)
-
         try:
-            while True:
-                if len(read_buffer) + self._recv_chunk_size >= self._max_recv_buffer_size:
-                    self._event_loop.add_callback(self._handle_recv)
-                    break
+#           self._event_loop.add_callback(self._handle_recv)
+            read = self._do_recv(self._recv_buffer)
 
-                read = self._do_recv(chunk)
-
-                if read is None or read < 0:
-                    break
-
-                if read == 0:
+            if read is not None:
+                if read > 0 and self._recv_cb:
+                    self._run_callback(self._recv_cb, self._recv_buffer[:read])
+                elif read == 0:
                     self.close()
-                    return
-
-                read_buffer.extend(chunk[:read])
-
-                if read != self._recv_chunk_size:
-                    break
-
-            if len(read_buffer) > 0 and self._recv_cb:
-                self._run_callback(self._recv_cb, read_buffer)
         except (socket.error, IOError, OSError) as ex:
-            if ex.args[0] not in _ERRNO_WOULDBLOCK:
-                self._handle_error(ex.args[0])
+                if ex.args[0] not in _ERRNO_WOULDBLOCK:
+                    self._handle_error(ex.args[0])
 
     def _handle_send(self):
         if not self.sending():
