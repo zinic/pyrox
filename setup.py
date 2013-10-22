@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-import sys
 import os
+import sys
+
+import pyrox.about
 
 from setuptools import setup, find_packages
 from distutils.extension import Extension
@@ -87,7 +89,7 @@ ext_modules = package_c()
 
 setup(
     name='pyrox',
-    version=read('VERSION')[0],
+    version=pyrox.about.VERSION,
     description='The high-speed HTTP middleware proxy for Python',
     author='John Hopper',
     author_email='john.hopper@jpserver.net',

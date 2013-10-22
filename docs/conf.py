@@ -1,6 +1,12 @@
 import os
 import sys
 
+# Set up the path correctly
+sys.path.insert(0, os.path.abspath('../'))
+
+# Import path dependent modules
+import pyrox.about
+
 
 class ModuleMock(object):
 
@@ -22,18 +28,14 @@ class ModuleMock(object):
             return ModuleMock()
 
 
-for mod in ['pyrox.http.parser', 'pyrox.http.model_util']:
-    sys.modules[mod] = ModuleMock()
-
-
 def read(relative):
     contents = open(relative, 'r').read()
     return [l for l in contents.split('\n') if l != '']
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath('../'))
+
+for mod in read('../tools/cython-modules'):
+    sys.modules[mod] = ModuleMock()
+
 
 # -- General configuration -----------------------------------------------------
 
@@ -66,7 +68,7 @@ copyright = u'2013, John Hopper'
 #
 
 # The short X.Y version.
-version = read('../VERSION')[0]
+version = pyrox.about.VERSION
 
 # The full version, including alpha/beta/rc tags.
 release = version

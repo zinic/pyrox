@@ -10,11 +10,17 @@ from pyrox.tstream.iostream import IOHandler, StreamClosedError
 from pyrox.tstream.tcpserver import TCPServer
 
 from pyrox.log import get_logger
+from pyrox.about import VERSION
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
 import traceback
 
 _LOG = get_logger(__name__)
+
+
+"""
+String representing a 0 length HTTP chunked encoding chunk.
+"""
 _CHUNK_CLOSE = b'0\r\n\r\n'
 
 
@@ -24,7 +30,7 @@ Default return object on error. This should be configurable.
 _BAD_GATEWAY_RESP = HttpResponse()
 _BAD_GATEWAY_RESP.version = b'1.1'
 _BAD_GATEWAY_RESP.status = '502 Bad Gateway'
-_BAD_GATEWAY_RESP.header('Server').values.append('pyrox')
+_BAD_GATEWAY_RESP.header('Server').values.append('pyrox/{}'.format(VERSION))
 _BAD_GATEWAY_RESP.header('Content-Length').values.append('0')
 
 
