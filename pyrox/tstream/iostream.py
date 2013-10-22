@@ -50,6 +50,9 @@ class StreamClosedError(IOError):
 class IOHandler(object):
 
     def __init__(self, sock, event_loop=None):
+        # Error tracking
+        self.error = 0
+
         # Socket init
         self._socket = sock
         self._sfileno = sock.fileno()
@@ -69,6 +72,7 @@ class IOHandler(object):
         self._close_cb = None
         self._recv_cb = None
         self._send_complete_cb = None
+        self._error_cb = None
 
         # Buffer management
         self._send_queue = collections.deque()
@@ -146,6 +150,14 @@ class IOHandler(object):
             assert callback is None or callable(callback)
             self._close_cb = stack_context.wrap(callback)
 
+    def on_error(self, callback):
+        """
+        Sets a callback to be called after this stream closes.
+        """
+        if not self._closing:
+            assert callback is None or callable(callback)
+            self._error_cb = stack_context.wrap(callback)
+
     def receiving(self):
         """Returns True if we are currently receiving from the stream."""
         return self._event_interest & self._event_loop.READ
@@ -192,14 +204,15 @@ class IOHandler(object):
 
     def _close(self):
         """Close this stream."""
-        gen_log.debug('Closing stream(fd: {})'.format(self._sfileno))
+        if self._socket is not None:
+            gen_log.debug('Closing stream(fd: {})'.format(self._sfileno))
 
-        self._event_loop.remove_handler(self._sfileno)
-        self._event_loop.add_timeout(100, self._socket.close)
-        self._socket = None
+            self._event_loop.remove_handler(self._sfileno)
+            self._event_loop.add_timeout(100, self._socket.close)
+            self._socket = None
 
-        if self._close_cb:
-            self._run_callback(self._close_cb)
+            if self._close_cb:
+                self._run_callback(self._close_cb)
 
     def _check_closed(self):
         if self._socket is None:
@@ -217,6 +230,12 @@ class IOHandler(object):
             return
 
         try:
+            if socket is not None and events & self._event_loop.ERROR:
+                self._handle_error(
+                    self._socket.getsockopt(
+                        socket.SOL_SOCKET, socket.SO_ERROR))
+                return
+
             if socket is not None and events & self._event_loop.READ:
                 self._handle_recv()
 
@@ -225,14 +244,21 @@ class IOHandler(object):
                     self._handle_connect()
                 else:
                     self._handle_send()
-
-            if socket is not None and events & self._event_loop.ERROR:
-                # We may have queued up a user callback so don't close until
-                # they've had a chance to run.
-                self._event_loop.add_callback(self.close)
         except Exception:
             self.close()
             raise
+
+    def _handle_error(self, error):
+        if self._error_cb is not None:
+            callback = self._error_cb
+            self._error_cb = None
+            self._run_callback(callback, error)
+
+        gen_log.warning("Error on stream(fd:%d) caught: %s",
+           self._sfileno, errno.errorcode[error])
+
+       # On error, close the FD
+        self.close()
 
     def _handle_recv(self):
         read_buffer = bytearray()
@@ -257,22 +283,12 @@ class IOHandler(object):
 
                 if read != self._recv_chunk_size:
                     break
+
+            if len(read_buffer) > 0 and self._recv_cb:
+                self._run_callback(self._recv_cb, read_buffer)
         except (socket.error, IOError, OSError) as ex:
-            if ex.args[0] in _ERRNO_WOULDBLOCK:
-                return
-
-            self.close()
-
-            # ssl.SSLError is a subclass of socket.error
-            if ex.args[0] in _ERRNO_CONNRESET:
-                # Treat ECONNRESET as a connection close rather than
-                # an error to minimize log spam (the exception will
-                # be available on self.error for apps that care).
-                return
-            raise
-
-        if len(read_buffer) > 0 and self._recv_cb:
-            self._run_callback(self._recv_cb, read_buffer)
+            if ex.args[0] not in _ERRNO_WOULDBLOCK:
+                self._handle_error(ex.args[0])
 
     def _handle_send(self):
         if not self.sending():
@@ -298,33 +314,10 @@ class IOHandler(object):
         except (socket.error, IOError, OSError) as ex:
             if ex.args[0] in _ERRNO_WOULDBLOCK:
                 self._send_queue.appendleft(msg)
-
-            elif ex.args[0] not in _ERRNO_CONNRESET:
-                # Broken pipe errors are usually caused by connection
-                # reset, and its better to not log EPIPE errors to
-                # minimize log spam
-                gen_log.warning(
-                        "Write error on %d: %s",
-                        self._sfileno,
-                        ex)
             else:
-                self.close()
+                self._handle_error(ex.args[0])
 
     def _handle_connect(self):
-        err = self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
-
-        if err != 0:
-            self.error = socket.error(err, os.strerror(err))
-
-            # IOLoop implementations may vary: some of them return
-            # an error event_interest before the socket becomes writable, so
-            # in that case a connection failure would be handled by the
-            # error path in _handle_events instead of here.
-            gen_log.warning("Connect error on fd %d: %s",
-                            self._sfileno, errno.errorcode[err])
-            self.close()
-            return
-
         if self._on_connect_cb is not None:
             callback = self._on_connect_cb
             self._on_connect_cb = None

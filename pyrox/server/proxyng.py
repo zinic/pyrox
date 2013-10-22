@@ -15,10 +15,17 @@ from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
 import traceback
 
 _LOG = get_logger(__name__)
-
-# Read 1k at a time
-_MAX_READ = 1024
 _CHUNK_CLOSE = b'0\r\n\r\n'
+
+
+"""
+Default return object on error. This should be configurable.
+"""
+_BAD_GATEWAY_RESP = HttpResponse()
+_BAD_GATEWAY_RESP.version = b'1.1'
+_BAD_GATEWAY_RESP.status = '502 Bad Gateway'
+_BAD_GATEWAY_RESP.header('Server').values.append('pyrox')
+_BAD_GATEWAY_RESP.header('Content-Length').values.append('0')
 
 
 def _write_to_stream(stream, data, is_chunked, callback=None):
@@ -250,11 +257,12 @@ class UpstreamHandler(ProxyHandler):
 
 class ConnectionTracker(object):
 
-    def __init__(self, on_stream_live, on_target_closed):
+    def __init__(self, on_stream_live, on_target_closed, on_target_error):
         self._streams = dict()
         self._target_in_use = None
         self._on_stream_live = on_stream_live
         self._on_target_closed = on_target_closed
+        self._on_target_error = on_target_error
 
     def destroy(self):
         for stream in self._streams.values():
@@ -280,11 +288,25 @@ class ConnectionTracker(object):
         self._streams[target] = live_stream
 
         def on_close():
+            # Disable error cb on close
+            live_stream.on_error(None)
+
             del self._streams[target]
             if self._target_in_use == target:
                 self.destroy()
                 self._on_target_closed()
         live_stream.on_close(on_close)
+
+        def on_error(error):
+            # Dsiable close cb on error
+            live_stream.on_close(None)
+
+            if self._target_in_use == target:
+                del self._streams[target]
+                if self._target_in_use == target:
+                    self.destroy()
+                    self._on_target_error(error)
+        live_stream.on_error(on_error)
 
         def on_connect():
             self._on_stream_live(live_stream)
@@ -303,7 +325,8 @@ class ProxyConnection(object):
         self._upstream_parser = None
         self._upstream_tracker = ConnectionTracker(
             self._on_upstream_live,
-            self._on_upstream_close)
+            self._on_upstream_close,
+            self._on_upstream_error)
 
         # Setup all of the wiring for downstream
         self._downstream = downstream
@@ -328,7 +351,11 @@ class ProxyConnection(object):
         request.replace_header('host').values.append(
             '{}:{}'.format(upstream_target[0], upstream_target[1]))
         self._request = request
-        self._upstream_tracker.connect(upstream_target)
+
+        try:
+            self._upstream_tracker.connect(upstream_target)
+        except Exception as ex:
+            _LOG.exception(ex)
 
     def _on_upstream_live(self, upstream):
         self._upstream_handler = UpstreamHandler(
@@ -357,12 +384,20 @@ class ProxyConnection(object):
         self._downstream_parser.destroy()
         self._downstream_parser = None
 
+    def _on_downstream_error(self, error):
+        _LOG.error('Downstream error: {}'.format(error))
+
+    def _on_upstream_error(self, error):
+        if not self._downstream.closed():
+            self._downstream.send(_BAD_GATEWAY_RESP.to_bytes())
+
     def _on_upstream_close(self):
         if not self._downstream.closed():
             self._downstream.close()
 
-        self._upstream_parser.destroy()
-        self._upstream_parser = None
+        if self._upstream_parser is not None:
+            self._upstream_parser.destroy()
+            self._upstream_parser = None
 
     def _on_downstream_read(self, data):
         try:
