@@ -4,9 +4,10 @@ import tornado
 import tornado.ioloop
 import tornado.process
 
-from .routing import RoutingHandler
+from .routing import RoundRobinRouter, PROTOCOL_HTTP, PROTOCOL_HTTPS
 
-from pyrox.tstream.iostream import IOHandler, StreamClosedError
+from pyrox.tstream.iostream import (SSLIOHandler, IOHandler,
+                                    StreamClosedError)
 from pyrox.tstream.tcpserver import TCPServer
 
 from pyrox.log import get_logger
@@ -286,13 +287,23 @@ class ConnectionTracker(object):
             self._new_connection(target)
 
     def _new_connection(self, target):
+        host, port, protocol = target
+
         # Set up our upstream socket
         us_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
 
-        # Create and bind the IOHandler
-        live_stream = IOHandler(us_sock)
+        # Create and bind the IO Handler based on selected protocol
+        if protocol == PROTOCOL_HTTP:
+            live_stream = IOHandler(us_sock)
+        elif protocol == PROTOCOL_HTTPS:
+            live_stream = SSLIOHandler(us_sock)
+        else:
+            raise Exception('Unknown protocol: {}.'.format(protocol))
+
+        # Store the stream reference for later use
         self._streams[target] = live_stream
 
+        # Build and set the on_close callback
         def on_close():
             # Disable error cb on close
             live_stream.on_error(None)
@@ -303,6 +314,7 @@ class ConnectionTracker(object):
                 self._on_target_closed()
         live_stream.on_close(on_close)
 
+        # Build and set the on_error callback
         def on_error(error):
             # Dsiable close cb on error
             live_stream.on_close(None)
@@ -314,9 +326,10 @@ class ConnectionTracker(object):
                     self._on_target_error(error)
         live_stream.on_error(on_error)
 
+        # Build and set the on_connect callback and then connect
         def on_connect():
             self._on_stream_live(live_stream)
-        live_stream.connect(target, on_connect)
+        live_stream.connect((host, port), on_connect)
 
 
 class ProxyConnection(object):
@@ -435,7 +448,7 @@ class TornadoHttpProxy(TCPServer):
     """
     def __init__(self, pipeline_factories, default_us_targets=None):
         super(TornadoHttpProxy, self).__init__()
-        self._router = RoutingHandler(default_us_targets)
+        self._router = RoundRobinRouter(default_us_targets)
         self.us_pipeline_factory = pipeline_factories[0]
         self.ds_pipeline_factory = pipeline_factories[1]
 

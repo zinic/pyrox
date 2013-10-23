@@ -479,13 +479,13 @@ class SSLIOHandler(IOHandler):
         if self._ssl_accepting:
             self._do_ssl_handshake()
             return
-        super(SSLIOHandler, self)._handle_read()
+        super(SSLIOHandler, self)._handle_recv()
 
     def _handle_send(self):
         if self._ssl_accepting:
             self._do_ssl_handshake()
             return
-        super(SSLIOHandler, self)._handle_write()
+        super(SSLIOHandler, self)._handle_send()
 
     def connect(self, address, callback=None, server_hostname=None):
         # Save the user's callback and run it after the ssl handshake

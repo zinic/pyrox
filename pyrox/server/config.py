@@ -8,7 +8,7 @@ _DEFAULTS = {
         'bind_host': 'localhost:8080'
     },
     'routing': {
-        'upstream_hosts': 'localhost:80'
+        'upstream_hosts': 'http://localhost:80'
     },
     'pipeline': {
         'use_singletons': False
@@ -262,11 +262,11 @@ class RoutingConfiguration(ConfigurationPart):
     def upstream_hosts(self):
         """
         Returns a list of downstream hosts to proxy requests to. This may be
-        set to either a single host and port or a comma delimited list of hosts
-        and their associated ports. This option defaults to localhost:80 if
+        set to either a single valid URI string or a comma delimited list of
+        valid URI strings. This option defaults to http://localhost:80 if
         left unset.
         ::
-            upstream_hosts = host:port, host:port, host:port
+            upstream_hosts = http://host:port, https://host:port
         """
         hosts = self.get('upstream_hosts')
-        return [_host_tuple(host) for host in _split_and_strip(hosts, ',')]
+        return [host for host in _split_and_strip(hosts, ',')]

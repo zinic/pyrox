@@ -164,8 +164,8 @@ def route(upstream_target):
     the specified upstream target. This method is invalid for handling an
     upstream response.
 
-    :param upstream_target: the <host:port> string of the upstream target
-                            to route to.
+    :param upstream_target: the URI string of the upstream target to route
+                            to.
     """
     return FilterAction(ROUTE, upstream_target)
 
