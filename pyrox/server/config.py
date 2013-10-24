@@ -7,6 +7,10 @@ _DEFAULTS = {
         'processes': 1,
         'bind_host': 'localhost:8080'
     },
+    'ssl': {
+        'cert_file': None,
+        'key_file': None
+    },
     'routing': {
         'upstream_hosts': 'http://localhost:80'
     },
@@ -92,6 +96,33 @@ class CoreConfiguration(ConfigurationPart):
             bind_host = localhost:8080
         """
         return self.get('bind_host')
+
+
+class SSLConfiguration(ConfigurationPart):
+    """
+    Class mapping for the Portal configuration section 'ssl'
+    """
+    @property
+    def cert_file(self):
+        """
+        Returns the path of the cert file for SSL configuration within
+        Pyrox. If left unset the value will default to None.
+
+        ::
+            cert_file = /etc/pyrox/server.cert
+        """
+        return self._get('cert_file')
+
+    @property
+    def key_file(self):
+        """
+        Returns the path of the key file for SSL configuration within
+        Pyrox. If left unset the value will default to None.
+
+        ::
+            key_file = /etc/pyrox/server.key
+        """
+        return self._get('key_file')
 
 
 class LoggingConfiguration(ConfigurationPart):

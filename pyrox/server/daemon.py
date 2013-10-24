@@ -137,10 +137,24 @@ def start_proxy(sockets, config):
         _LOG.exception(ex)
         return -1
 
+    # Load any SSL configurations
+    ssl_options = None
+
+    cert_file = config.ssl.cert_file
+    key_file = config.ssl.key_file
+
+    if None not in (cert_file, key_file):
+        ssl_options = dict()
+        ssl_options['certfile'] = cert_file
+        ssl_options['keyfile'] = key_file
+
+        _LOG.debug('SSL enabled: {}'.format(ssl_options))
+
     # Create proxy server ref
     http_proxy = TornadoHttpProxy(
         filter_pipeline_factories,
-        config.routing.upstream_hosts)
+        config.routing.upstream_hosts,
+        )
 
     # Add our sockets for watching
     http_proxy.add_sockets(sockets)

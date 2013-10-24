@@ -446,8 +446,9 @@ class TornadoHttpProxy(TCPServer):
                       as the first element and the downstream filter pipeline
                       factory as the second element.
     """
-    def __init__(self, pipeline_factories, default_us_targets=None):
-        super(TornadoHttpProxy, self).__init__()
+    def __init__(self, pipeline_factories, default_us_targets=None,
+            ssl_options=None):
+        super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
         self._router = RoundRobinRouter(default_us_targets)
         self.us_pipeline_factory = pipeline_factories[0]
         self.ds_pipeline_factory = pipeline_factories[1]
