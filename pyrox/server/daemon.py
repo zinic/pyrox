@@ -154,7 +154,7 @@ def start_proxy(sockets, config):
     http_proxy = TornadoHttpProxy(
         filter_pipeline_factories,
         config.routing.upstream_hosts,
-        )
+        ssl_options)
 
     # Add our sockets for watching
     http_proxy.add_sockets(sockets)

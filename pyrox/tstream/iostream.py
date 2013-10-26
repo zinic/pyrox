@@ -514,7 +514,11 @@ class SSLIOHandler(IOHandler):
             return -1
 
         try:
-            return self._socket.recv_into(recv_buffer, self._recv_chunk_size)
+            bytes = self._socket.read(self._recv_chunk_size)
+            read = len(bytes)
+            recv_buffer[:read] = bytes
+
+            return read
         except ssl.SSLError as e:
             # SSLError is a subclass of socket.error, so this except
             # block must come first.

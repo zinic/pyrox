@@ -111,7 +111,7 @@ class SSLConfiguration(ConfigurationPart):
         ::
             cert_file = /etc/pyrox/server.cert
         """
-        return self._get('cert_file')
+        return self.get('cert_file')
 
     @property
     def key_file(self):
@@ -122,7 +122,7 @@ class SSLConfiguration(ConfigurationPart):
         ::
             key_file = /etc/pyrox/server.key
         """
-        return self._get('key_file')
+        return self.get('key_file')
 
 
 class LoggingConfiguration(ConfigurationPart):
