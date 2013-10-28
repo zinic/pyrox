@@ -293,7 +293,7 @@ class RoutingConfiguration(ConfigurationPart):
     def upstream_hosts(self):
         """
         Returns a list of downstream hosts to proxy requests to. This may be
-        set to either a single valid URI string or a comma delimited list of
+        set to either a single valid URL string or a comma delimited list of
         valid URI strings. This option defaults to http://localhost:80 if
         left unset.
         ::
