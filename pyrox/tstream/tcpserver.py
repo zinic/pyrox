@@ -65,8 +65,8 @@ class TCPServer(object):
     .. versionadded:: 3.1
     The ``max_buffer_size`` argument.
     """
-    def __init__(self, io_loop=None, ssl_options=None, max_buffer_size=None):
-        self.io_loop = io_loop
+    def __init__(self, event_loop=None, ssl_options=None, max_buffer_size=None):
+        self.event_loop = event_loop
         self.ssl_options = ssl_options
         self._sockets = {}  # fd -> socket object
         self._pending_sockets = []
@@ -110,13 +110,12 @@ class TCPServer(object):
         method and `tornado.process.fork_processes` to provide greater
         control over the initialization of a multi-process server.
         """
-        if self.io_loop is None:
-            self.io_loop = IOLoop.current()
+        if self.event_loop is None:
+            self.event_loop = IOLoop.current()
 
         for sock in sockets:
             self._sockets[sock.fileno()] = sock
-            add_accept_handler(sock, self._handle_connection,
-                               io_loop=self.io_loop)
+            add_accept_handler(sock, self._handle_connection, io_loop=self.event_loop)
 
     def add_socket(self, socket):
         """Singular version of `add_sockets`. Takes a single socket object."""
@@ -184,7 +183,7 @@ class TCPServer(object):
         server is stopped.
         """
         for fd, sock in self._sockets.items():
-            self.io_loop.remove_handler(fd)
+            self.event_loop.remove_handler(fd)
             sock.close()
 
     def handle_stream(self, stream, address):
@@ -221,10 +220,9 @@ class TCPServer(object):
                     raise
         try:
             if self.ssl_options is not None:
-                stream = SSLIOHandler(connection, io_loop=self.io_loop,
-                                     max_buffer_size=self.max_buffer_size)
+                stream = SSLIOHandler(connection, event_loop=self.event_loop)
             else:
-                stream = IOHandler(connection, event_loop=self.io_loop)
+                stream = IOHandler(connection, event_loop=self.event_loop)
             self.handle_stream(stream, address)
         except Exception:
             app_log.error("Error in connection callback", exc_info=True)

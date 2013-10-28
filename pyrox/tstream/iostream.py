@@ -393,7 +393,7 @@ class SSLIOHandler(IOHandler):
             # Indirectly start the handshake, which will run on the next
             # IOLoop iteration and then the real IO event_interest will be set in
             # _handle_events.
-            self._add_event_interest(self.io_loop.WRITE)
+            self._add_event_interest(self._event_loop.WRITE)
 
     def reading(self):
         return self._handshake_reading or super(SSLIOHandler, self).reading()
