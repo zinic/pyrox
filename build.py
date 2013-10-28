@@ -244,6 +244,6 @@ if len(sys.argv) != 2:
     print('usage: build.py <project-name>')
     exit(1)
 
-version = read('VERSION')[0]
+version = read('./pyrox/VERSION')[0]
 
 build(requirements_file, hooks, sys.argv[1], version)
