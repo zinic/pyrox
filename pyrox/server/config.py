@@ -109,7 +109,7 @@ class SSLConfiguration(ConfigurationPart):
         Pyrox. If left unset the value will default to None.
 
         ::
-            cert_file = /etc/pyrox/server.cert
+            cert_file = /etc/pyrox/ssl/server.cert
         """
         return self.get('cert_file')
 
@@ -120,7 +120,7 @@ class SSLConfiguration(ConfigurationPart):
         Pyrox. If left unset the value will default to None.
 
         ::
-            key_file = /etc/pyrox/server.key
+            key_file = /etc/pyrox/ssl/server.key
         """
         return self.get('key_file')
 
