@@ -460,7 +460,9 @@ class SSLIOHandler(IOHandler):
             verify_mode = self._ssl_options.get('cert_reqs', ssl.CERT_NONE)
         elif isinstance(self._ssl_options, ssl.SSLContext):
             verify_mode = self._ssl_options.verify_mode
+
         assert verify_mode in (ssl.CERT_NONE, ssl.CERT_REQUIRED, ssl.CERT_OPTIONAL)
+
         if verify_mode == ssl.CERT_NONE or self._server_hostname is None:
             return True
         cert = self._socket.getpeercert()
@@ -478,20 +480,21 @@ class SSLIOHandler(IOHandler):
     def _handle_recv(self):
         if self._ssl_accepting:
             self._do_ssl_handshake()
-            return
-        super(SSLIOHandler, self)._handle_recv()
+        else:
+            super(SSLIOHandler, self)._handle_recv()
 
     def _handle_send(self):
         if self._ssl_accepting:
             self._do_ssl_handshake()
-            return
-        super(SSLIOHandler, self)._handle_send()
+        else:
+            super(SSLIOHandler, self)._handle_send()
 
     def connect(self, address, callback=None, server_hostname=None):
         # Save the user's callback and run it after the ssl handshake
         # has completed.
         self._ssl_on_connect_cb = stack_context.wrap(callback)
         self._server_hostname = server_hostname
+
         super(SSLIOHandler, self).connect(address, callback=None)
 
     def _handle_connect(self):

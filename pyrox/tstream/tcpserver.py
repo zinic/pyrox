@@ -8,7 +8,7 @@ import ssl
 from pyrox.tstream.iostream import IOHandler, SSLIOHandler, IOHandler
 
 from tornado import process
-from tornado.log import app_log
+from tornado.log import gen_log, app_log
 from tornado.ioloop import IOLoop
 from tornado.netutil import bind_sockets, add_accept_handler, ssl_wrap_socket
 
@@ -66,7 +66,7 @@ class TCPServer(object):
     The ``max_buffer_size`` argument.
     """
     def __init__(self, event_loop=None, ssl_options=None, max_buffer_size=None):
-        self.event_loop = event_loop
+        self._event_loop = event_loop
         self.ssl_options = ssl_options
         self._sockets = {}  # fd -> socket object
         self._pending_sockets = []
@@ -110,12 +110,12 @@ class TCPServer(object):
         method and `tornado.process.fork_processes` to provide greater
         control over the initialization of a multi-process server.
         """
-        if self.event_loop is None:
-            self.event_loop = IOLoop.current()
+        if self._event_loop is None:
+            self._event_loop = IOLoop.current()
 
         for sock in sockets:
             self._sockets[sock.fileno()] = sock
-            add_accept_handler(sock, self._handle_connection, io_loop=self.event_loop)
+            add_accept_handler(sock, self._handle_connection, io_loop=self._event_loop)
 
     def add_socket(self, socket):
         """Singular version of `add_sockets`. Takes a single socket object."""
@@ -183,7 +183,7 @@ class TCPServer(object):
         server is stopped.
         """
         for fd, sock in self._sockets.items():
-            self.event_loop.remove_handler(fd)
+            self._event_loop.remove_handler(fd)
             sock.close()
 
     def handle_stream(self, stream, address):
@@ -199,6 +199,8 @@ class TCPServer(object):
                                              server_side=True,
                                              do_handshake_on_connect=False)
             except ssl.SSLError as err:
+                gen_log.exception(err)
+
                 if err.args[0] == ssl.SSL_ERROR_EOF:
                     return connection.close()
                 else:
@@ -220,9 +222,9 @@ class TCPServer(object):
                     raise
         try:
             if self.ssl_options is not None:
-                stream = SSLIOHandler(connection, event_loop=self.event_loop)
+                stream = SSLIOHandler(connection, event_loop=self._event_loop)
             else:
-                stream = IOHandler(connection, event_loop=self.event_loop)
+                stream = IOHandler(connection, event_loop=self._event_loop)
             self.handle_stream(stream, address)
         except Exception:
             app_log.error("Error in connection callback", exc_info=True)

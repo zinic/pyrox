@@ -174,8 +174,7 @@ def start_pyrox(other_cfg=None):
     logging_manager.configure(config)
 
     _LOG.info('Upstream targets are: {}'.format(
-        ['http://{0}:{1}'.format(dst[0], dst[1])
-            for dst in config.routing.upstream_hosts]))
+        [dst for dst in config.routing.upstream_hosts]))
 
     # Set bind host
     bind_host = config.core.bind_host.split(':')
