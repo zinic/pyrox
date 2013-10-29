@@ -182,7 +182,13 @@ def start_pyrox(other_cfg=None):
         raise ConfigurationError('bind_host must have a port specified')
 
     # Bind the sockets in the main process
-    sockets = bind_sockets(port=bind_host[1], address=bind_host[0])
+    sockets = None
+
+    try:
+        sockets = bind_sockets(port=bind_host[1], address=bind_host[0])
+    except Exception as ex:
+        _LOG.exception(ex)
+        return
 
     # Bind the server port(s)
     _LOG.info('Pyrox listening on: http://{0}:{1}'.format(
