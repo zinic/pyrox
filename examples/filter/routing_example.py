@@ -9,4 +9,4 @@ class RoutingFilter(filtering.HttpFilter):
 
     @filtering.handles_request_head
     def on_request_head(self, request_message):
-        return filtering.route('google.com:80')
+        return filtering.route('http://google.com:80')
