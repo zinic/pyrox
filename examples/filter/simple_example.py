@@ -14,7 +14,7 @@ class SimpleFilter(filtering.HttpFilter):
             # If there is a user-agent value then print it out and pass
             # the request upstream
             print(user_agent_header.values[0])
-            return filtering.pass_event()
+            return filtering.next()
         else:
             # If there is no user-agent, then reject the request
             return filtering.reject()
