@@ -7,7 +7,6 @@ import pyrox.server as server
 
 from pyrox.filtering import HttpFilterPipeline
 
-
 _LOG = get_logger(__name__)
 
 args_parser = argparse.ArgumentParser(
