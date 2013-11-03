@@ -10,8 +10,6 @@ from pyrox.filtering import HttpFilterPipeline
 
 _LOG = get_logger(__name__)
 
-_FTEST_CONFIG_KEY = 'keystone_meniscus_ftest'
-
 args_parser = argparse.ArgumentParser(
     prog='proxy',
     description='Pyrox, the fast Python HTTP middleware server.')
