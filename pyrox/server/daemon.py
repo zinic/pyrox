@@ -162,9 +162,6 @@ def start_proxy(sockets, config):
     # Start tornado
     IOLoop.current().start()
 
-    # import cProfile
-    # cProfile.runctx('IOLoop.current().start()', globals(), locals())
-
 
 def start_pyrox(other_cfg=None):
     config = load_pyrox_config(other_cfg) if other_cfg else load_pyrox_config()
@@ -194,7 +191,21 @@ def start_pyrox(other_cfg=None):
     _LOG.info('Pyrox listening on: http://{0}:{1}'.format(
         bind_host[0], bind_host[1]))
 
-    # Start Tornado
+    # Are we trying to profile Pyrox?
+    if config.core.enable_profiling:
+        _LOG.warning("""
+**************************************************************************
+Notice: Pyrox Profiling Mode Enabled
+
+You have enabled Pyrox with profiling enabled in the Pyrox config. This
+will restrict Pyrox to one resident process. It is not recommended that
+you run Pyrox in production with this feature enabled.
+**************************************************************************
+""")
+        start_proxy(sockets, config)
+        return
+
+    # Number of processess to spin
     num_processes = config.core.processes
 
     if num_processes <= 0:

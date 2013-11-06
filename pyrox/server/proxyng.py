@@ -6,7 +6,7 @@ import tornado.process
 
 from .routing import RoundRobinRouter, PROTOCOL_HTTP, PROTOCOL_HTTPS
 
-from pyrox.tstream.iostream import (SSLIOHandler, IOHandler,
+from pyrox.tstream.iostream import (SSLSocketIOHandler, SocketIOHandler,
                                     StreamClosedError)
 from pyrox.tstream.tcpserver import TCPServer
 
@@ -43,9 +43,9 @@ def _write_to_stream(stream, data, is_chunked, callback=None):
         chunk.extend('\r\n')
         chunk.extend(data)
         chunk.extend('\r\n')
-        stream.send(chunk, callback)
+        stream.write(chunk, callback)
     else:
-        stream.send(data, callback)
+        stream.write(data, callback)
 
 
 class AccumulationStream(object):
@@ -134,7 +134,7 @@ class DownstreamHandler(ProxyHandler):
         else:
             # Hold up on the client side until we're done negotiating
             # connections.
-            self._downstream.stop_recv()
+            self._downstream.handle.disable_reading()
 
             # We're routing to upstream; we need to know where to go
             if action.is_routing():
@@ -147,7 +147,7 @@ class DownstreamHandler(ProxyHandler):
 
         if self._downstream.receiving():
             # Hold up on the client side until we're done with this chunk
-            self._downstream.stop_recv()
+            self._downstream.handle.disable_reading()
 
         # Rejections simply discard the body
         if not self._rejected:
@@ -163,7 +163,7 @@ class DownstreamHandler(ProxyHandler):
                 # When we write to the stream set the callback to resume
                 # reading from downstream.
                 _write_to_stream(self._upstream, data, is_chunked,
-                    self._downstream.resume_recv)
+                    self._downstream.handle.resume_reading)
             else:
                 # If we're not connected upstream, store the fragment
                 # for later
@@ -174,18 +174,21 @@ class DownstreamHandler(ProxyHandler):
 
         if self._preread_body and len(self._preread_body) > 0:
             _write_to_stream(self._upstream, self._preread_body,
-                self._chunked, self._downstream.resume_recv)
+                self._chunked, self._downstream.handle.resume_reading)
             self._preread_body = None
 
     def on_message_complete(self, is_chunked, keep_alive):
+        # Enable reading when we're ready later
+        self._downstream.handle.disable_reading()
+
         if keep_alive:
             self._http_msg = HttpRequest()
 
         if self._rejected:
-            self._downstream.send(self._response.to_bytes())
+            self._downstream.write(self._response.to_bytes())
         elif is_chunked or self._chunked:
             # Finish the last chunk.
-            self._upstream.send(_CHUNK_CLOSE)
+            self._upstream.write(_CHUNK_CLOSE)
 
 
 class UpstreamHandler(ProxyHandler):
@@ -221,7 +224,7 @@ class UpstreamHandler(ProxyHandler):
             self._rejected = True
             self._response = action.payload
         else:
-            self._downstream.send(self._http_msg.to_bytes())
+            self._downstream.write(self._http_msg.to_bytes())
 
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
@@ -235,7 +238,7 @@ class UpstreamHandler(ProxyHandler):
                 data = accumulator.bytes
 
             # Hold up on the upstream side until we're done sending this chunk
-            self._upstream.stop_recv()
+            self._upstream.handle.disable_reading()
 
             # When we write to the stream set the callback to resume
             # reading from upstream.
@@ -243,22 +246,22 @@ class UpstreamHandler(ProxyHandler):
                 self._downstream,
                 data,
                 is_chunked or self._chunked,
-                self._upstream.resume_recv)
+                self._upstream.handle.resume_reading)
 
     def on_message_complete(self, is_chunked, keep_alive):
         callback = self._upstream.close
-        self._upstream.stop_recv()
+        self._upstream.handle.disable_reading()
 
         if keep_alive:
             self._http_msg = HttpResponse()
-            callback = self._downstream.resume_recv
+            callback = self._downstream.handle.resume_reading
 
         if self._rejected:
             # Serialize our message to them
-            self._downstream.send(self._http_msg.to_bytes(), callback)
+            self._downstream.write(self._http_msg.to_bytes(), callback)
         elif is_chunked or self._chunked:
             # Finish the last chunk.
-            self._downstream.send(_CHUNK_CLOSE, callback)
+            self._downstream.write(_CHUNK_CLOSE, callback)
         else:
             callback()
 
@@ -294,9 +297,9 @@ class ConnectionTracker(object):
 
         # Create and bind the IO Handler based on selected protocol
         if protocol == PROTOCOL_HTTP:
-            live_stream = IOHandler(us_sock)
+            live_stream = SocketIOHandler(us_sock)
         elif protocol == PROTOCOL_HTTPS:
-            live_stream = SSLIOHandler(us_sock)
+            live_stream = SSLSocketIOHandler(us_sock)
         else:
             raise Exception('Unknown protocol: {}.'.format(protocol))
 
@@ -355,7 +358,7 @@ class ProxyConnection(object):
             self._connect_upstream)
         self._downstream_parser = RequestParser(self._downstream_handler)
         self._downstream.on_close(self._on_downstream_close)
-        self._downstream.on_recv(self._on_downstream_read)
+        self._downstream.read(self._on_downstream_read)
 
     def _connect_upstream(self, request, route=None):
         if route:
@@ -387,10 +390,10 @@ class ProxyConnection(object):
         self._upstream_parser = ResponseParser(self._upstream_handler)
 
         # Set the read callback
-        upstream.on_recv(self._on_upstream_read)
+        upstream.read(self._on_upstream_read)
 
         # Send the proxied request object
-        upstream.send(self._request.to_bytes())
+        upstream.write(self._request.to_bytes())
 
         # Drop the ref to the proxied request head
         self._request = None
@@ -410,7 +413,7 @@ class ProxyConnection(object):
 
     def _on_upstream_error(self, error):
         if not self._downstream.closed():
-            self._downstream.send(_BAD_GATEWAY_RESP.to_bytes())
+            self._downstream.write(_BAD_GATEWAY_RESP.to_bytes())
 
     def _on_upstream_close(self):
         if not self._downstream.closed():

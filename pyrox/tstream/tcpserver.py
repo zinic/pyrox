@@ -5,7 +5,7 @@ import os
 import socket
 import ssl
 
-from pyrox.tstream.iostream import IOHandler, SSLIOHandler, IOHandler
+from pyrox.tstream.iostream import SocketIOHandler, SSLSocketIOHandler, SocketIOHandler
 
 from tornado import process
 from tornado.log import gen_log, app_log
@@ -65,8 +65,8 @@ class TCPServer(object):
     .. versionadded:: 3.1
     The ``max_buffer_size`` argument.
     """
-    def __init__(self, event_loop=None, ssl_options=None, max_buffer_size=None):
-        self._event_loop = event_loop
+    def __init__(self, io_loop=None, ssl_options=None, max_buffer_size=None):
+        self._io_loop = io_loop
         self.ssl_options = ssl_options
         self._sockets = {}  # fd -> socket object
         self._pending_sockets = []
@@ -110,12 +110,12 @@ class TCPServer(object):
         method and `tornado.process.fork_processes` to provide greater
         control over the initialization of a multi-process server.
         """
-        if self._event_loop is None:
-            self._event_loop = IOLoop.current()
+        if self._io_loop is None:
+            self._io_loop = IOLoop.current()
 
         for sock in sockets:
             self._sockets[sock.fileno()] = sock
-            add_accept_handler(sock, self._handle_connection, io_loop=self._event_loop)
+            add_accept_handler(sock, self._handle_connection, io_loop=self._io_loop)
 
     def add_socket(self, socket):
         """Singular version of `add_sockets`. Takes a single socket object."""
@@ -183,11 +183,11 @@ class TCPServer(object):
         server is stopped.
         """
         for fd, sock in self._sockets.items():
-            self._event_loop.remove_handler(fd)
+            self._io_loop.remove_handler(fd)
             sock.close()
 
     def handle_stream(self, stream, address):
-        """Override to handle a new `.IOHandler` from an incoming connection."""
+        """Override to handle a new `.SocketIOHandler` from an incoming connection."""
         raise NotImplementedError()
 
     def _handle_connection(self, connection, address):
@@ -213,7 +213,7 @@ class TCPServer(object):
                 # (Linux). If it returns ENOTCONN, this error is
                 # silently swallowed by the ssl module, so we need to
                 # catch another error later on (AttributeError in
-                # SSLIOHandler._do_ssl_handshake).
+                # SSLSocketIOHandler._do_ssl_handshake).
                 # To test this behavior, try nmap with the -sT flag.
                 # https://github.com/facebook/tornado/pull/750
                 if err.args[0] in (errno.ECONNABORTED, errno.EINVAL):
@@ -222,9 +222,9 @@ class TCPServer(object):
                     raise
         try:
             if self.ssl_options is not None:
-                stream = SSLIOHandler(connection, event_loop=self._event_loop)
+                stream = SSLSocketIOHandler(connection, io_loop=self._io_loop)
             else:
-                stream = IOHandler(connection, event_loop=self._event_loop)
+                stream = SocketIOHandler(connection, io_loop=self._io_loop)
             self.handle_stream(stream, address)
         except Exception:
             app_log.error("Error in connection callback", exc_info=True)

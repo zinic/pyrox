@@ -5,6 +5,7 @@ from pyrox.util.config import (load_config, ConfigurationPart,
 _DEFAULTS = {
     'core': {
         'processes': 1,
+        'enable_profiling': False,
         'bind_host': 'localhost:8080'
     },
     'ssl': {
@@ -67,6 +68,20 @@ class CoreConfiguration(ConfigurationPart):
             processes = 75
         """
         return self.getint('processes')
+
+    @property
+    def enable_profiling(self):
+        """
+        Returns a boolean value representing whether or not Pyrox should
+        use a special single-process start up and run sequence so that code
+        may be profiled. If unset, this defaults to False.
+
+        **NOTE**: If enabled,  the number of processess Pyrox will be allowed
+        to spin up will be limited to **1**
+        ::
+            enable_profiling = True
+        """
+        return self.getboolean('enable_profiling')
 
     @property
     def plugin_paths(self):

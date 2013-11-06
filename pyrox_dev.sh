@@ -24,6 +24,5 @@ esac
 if [ ${?} -ne 0 ]; then
     python setup.py build_ext --inplace
 else
-    #python -m cProfile -o /tmp/profile.prof ${MAIN_PY} ${@}
-    python ${MAIN_PY} ${@}
+    python ${PYTHON_ARGS} ${MAIN_PY} ${@}
 fi

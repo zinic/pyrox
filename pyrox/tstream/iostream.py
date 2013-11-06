@@ -32,9 +32,8 @@ _ERRNO_WOULDBLOCK = (errno.EWOULDBLOCK, errno.EAGAIN)
 # They should be caught and handled less noisily than other errors.
 _ERRNO_CONNRESET = (errno.ECONNRESET, errno.ECONNABORTED, errno.EPIPE)
 
-_ONE_MILLISECOND = timedelta(milliseconds=1)
-
-_READ_CHUNK_SIZE = 4096
+# Nice constant for enabling debug output
+_SHOULD_LOG_DEBUG_OUTPUT = gen_log.isEnabledFor('DEBUG')
 
 
 class StreamClosedError(IOError):
@@ -47,99 +46,190 @@ class StreamClosedError(IOError):
     pass
 
 
+class WriteQueue(object):
+
+    def __init__(self):
+        self._last_send_idx = 0
+        self._write_queue = collections.deque()
+
+    def has_next(self):
+        return len(self._write_queue) > 0
+
+    def next(self):
+        if self.has_next():
+            return (self._write_queue[0], self._last_send_idx)
+        return None
+
+    def clear(self):
+        self._write_queue.clear()
+
+    def append(self, src):
+        self._write_queue.append(src)
+
+    def advance(self, bytes_to_advance):
+        next_src = self._write_queue[0]
+
+        if bytes_to_advance + self._last_send_idx >= len(next_src):
+            self._write_queue.popleft()
+            self._last_send_idx = 0
+        else:
+            self._last_send_idx += bytes_to_advance
+
+
 class IOHandler(object):
 
-    def __init__(self, sock, event_loop=None, recv_chunk_size=4096):
+    def __init__(self, io_loop=None):
+        # Bind to the eventloop
+        self._io_loop = io_loop or ioloop.IOLoop.current()
+
         # Error tracking
         self.error = 0
 
+        # Callbacks
+        self._connect_cb = None
+        self._close_cb = None
+        self._read_cb = None
+        self._write_cb = None
+
+        # TODO:Review - Is this a good idea?
+        self._error_cb = None
+
+
+    def reading(self):
+        raise NotImplementedError()
+
+    def writing(self):
+        raise NotImplementedError()
+
+    def closed(self):
+        raise NotImplementedError()
+
+    def read(self, callback):
+        raise NotImplementedError()
+
+    def write(self, src, callback=None):
+        raise NotImplementedError()
+
+    def connect(self, address, callback=None):
+        raise NotImplementedError()
+
+    def close(self):
+        raise NotImplementedError()
+
+
+class FileDescriptorHandle(object):
+
+    def __init__(self, fd, io_loop):
+        assert fd is not None
+        assert io_loop is not None
+
+        self.fd = fd
+        self._io_loop = io_loop
+        self._event_interest = None
+
+    def is_reading(self):
+        return self._event_interest & self._io_loop.READ
+
+    def is_writing(self):
+        return self._event_interest & self._io_loop.WRITE
+
+    def set_handler(self, event_handler):
+        """initialize the ioloop event handler"""
+        assert event_handler is not None and callable(event_handler)
+        self._event_interest = self._io_loop.ERROR
+
+        with stack_context.NullContext():
+            self._io_loop.add_handler(
+                self.fd,
+                event_handler,
+                self._event_interest)
+
+    def remove_handler(self):
+        self._io_loop.remove_handler(self.fd)
+
+    def disable_reading(self):
+        """
+        Alias for removing the read interest from the event handler.
+        """
+        if _SHOULD_LOG_DEBUG_OUTPUT:
+            gen_log.debug('Halting read events for stream(fd:{})'.format(
+                self.fd))
+        self._drop_event_interest(self._io_loop.READ)
+
+    def disable_writing(self):
+        """
+        Alias for removing the send interest from the event handler.
+        """
+        if _SHOULD_LOG_DEBUG_OUTPUT:
+            gen_log.debug('Halting write events for stream(fd:{})'.format(
+                self.fd))
+        self._drop_event_interest(self._io_loop.WRITE)
+
+    def resume_reading(self):
+        """
+        Alias for adding the read interest to the event handler.
+        """
+        if _SHOULD_LOG_DEBUG_OUTPUT:
+            gen_log.debug('Resuming recv events for stream(fd:{})'.format(
+                self.fd))
+        self._add_event_interest(self._io_loop.READ)
+
+    def resume_writing(self):
+        """
+        Alias for adding the send interest to the event handler.
+        """
+        if _SHOULD_LOG_DEBUG_OUTPUT:
+            gen_log.debug('Resuming send events for stream(fd:{})'.format(
+                self.fd))
+        self._add_event_interest(self._io_loop.WRITE)
+
+    def _add_event_interest(self, event_interest):
+        """Add io_state to poller."""
+        if not self._event_interest & event_interest:
+            self._event_interest = self._event_interest | event_interest
+            self._io_loop.update_handler(self.fd, self._event_interest)
+
+    def _drop_event_interest(self, event_interest):
+        """Stop poller from watching an io_state."""
+        if self._event_interest & event_interest:
+            self._event_interest = self._event_interest & (~event_interest)
+            self._io_loop.update_handler(self.fd, self._event_interest)
+
+
+class SocketIOHandler(IOHandler):
+
+    def __init__(self, sock, io_loop=None, recv_chunk_size=4096):
+        super(SocketIOHandler, self).__init__(io_loop)
+
         # Socket init
         self._socket = sock
-        self._sfileno = sock.fileno()
 
+        # Set socket options
         self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._socket.setblocking(0)
 
-        # Bind to the eventloop
-        self._event_loop = event_loop or ioloop.IOLoop.current()
+        # Initialize our handling of the FD events
+        self.handle = FileDescriptorHandle(self._socket.fileno(), self._io_loop)
+        self.handle.set_handler(self._handle_events)
 
         # Flow control vars
         self._connecting = False
         self._closing = False
 
-        # Callbacks
-        self._on_connect_cb = None
-        self._close_cb = None
-        self._recv_cb = None
-        self._send_complete_cb = None
-        self._error_cb = None
-
-        # Sending and receiving management
-        self._last_send_idx = 0
-        self._send_queue = collections.deque()
+        # Writing and reading management
+        self._write_queue = WriteQueue()
 
         self._recv_chunk_size = recv_chunk_size
         self._recv_buffer = bytearray(self._recv_chunk_size)
 
-        # Mark our initial interests
-        self._init_event_interest(self._event_loop.ERROR)
-
-    def stop_recv(self):
-        """
-        Alias for removing the read interest from the event handler.
-        """
-        if not self._closing:
-            gen_log.debug('Halting recv events for stream(fd:{})'.format(
-                self._sfileno))
-            self._drop_event_interest(self._event_loop.READ)
-
-    def stop_send(self):
-        """
-        Alias for removing the send interest from the event handler.
-        """
-        if not self._closing:
-            gen_log.debug('Halting send events for stream(fd:{})'.format(
-                self._sfileno))
-            self._drop_event_interest(self._event_loop.WRITE)
-
-    def resume_recv(self):
-        """
-        Alias for adding the read interest to the event handler.
-        """
-        if not self._closing:
-            gen_log.debug('Resuming recv events for stream(fd:{})'.format(
-                self._sfileno))
-            self._add_event_interest(self._event_loop.READ)
-
-    def resume_send(self):
-        """
-        Alias for adding the send interest to the event handler.
-        """
-        if not self._closing:
-            gen_log.debug('Resuming send events for stream(fd:{})'.format(
-                self._sfileno))
-            self._add_event_interest(self._event_loop.WRITE)
-
-    def on_recv(self, callback):
-        """
-        Sets a callback for read events and then sets the read interest on
-        the event handler.
-        """
-        self._check_closed()
-
-        if not self._closing:
-            assert callback is None or callable(callback)
-            self._recv_cb = stack_context.wrap(callback)
-            self.resume_recv()
-
-    def on_send_complete(self, callback=None):
+    def on_done_writing(self, callback=None):
         """
         Sets a callback for completed send events and then sets the send
         interest on the event handler.
         """
         if not self._closing:
             assert callback is None or callable(callback)
-            self._send_complete_cb = stack_context.wrap(callback)
+            self._write_cb = stack_context.wrap(callback)
 
     def on_close(self, callback):
         """
@@ -157,45 +247,59 @@ class IOHandler(object):
             assert callback is None or callable(callback)
             self._error_cb = stack_context.wrap(callback)
 
-    def receiving(self):
+    def reading(self):
         """Returns True if we are currently receiving from the stream."""
-        return self._event_interest & self._event_loop.READ
+        return not self.closed() and self.handle.reading()
 
-    def sending(self):
-        """Returns True if we are currently sending to the stream."""
-        return len(self._send_queue) > 0
+    def writing(self):
+        """Returns True if we are currently writing to the stream."""
+        return not self.closed() and self._write_queue.has_next()
 
     def closed(self):
         return self._closing or self._socket is None
 
-    def send(self, msg, callback=None):
-        self._check_closed()
+    def read(self, callback):
+        """
+        Sets a callback for read events and then sets the read interest on
+        the event handler.
+        """
+        self._assert_not_closed()
+
+        assert callback is None or callable(callback)
+        self._read_cb = stack_context.wrap(callback)
+        self.handle.resume_reading()
+
+    def write(self, msg, callback=None):
+        self._assert_not_closed()
 
         if not isinstance(msg, basestring) and not isinstance(msg, bytearray):
             raise TypeError("bytes/bytearray/unicode/str objects only")
 
-        self._send_queue.append(msg)
-        self.on_send_complete(callback)
-        self.resume_send()
+        # Append the data for writing - this should not copy the data
+        self._write_queue.append(msg)
+        # Enable writing on the FD
+        self.handle.resume_writing()
+        # Set our callback - writing None to the method below is okay
+        self.on_done_writing(callback)
 
-    def connect(self, address, callback=None, server_hostname=None):
+    def connect(self, address, callback=None):
         self._connecting = True
 
         try:
             self._socket.connect(address)
         except socket.error as e:
             if (e.args[0] != errno.EINPROGRESS and e.args[0] not in _ERRNO_WOULDBLOCK):
-                gen_log.warning("Connect error on fd %d: %s", self._sfileno, e)
+                gen_log.warning("Connect error on fd %d: %s", self.handle.fd, e)
                 self.close()
                 return
 
         self._on_connect_cb = stack_context.wrap(callback)
-        self._add_event_interest(self._event_loop.WRITE)
+        self.handle.resume_writing()
 
     def close(self):
         if not self._closing:
-            if self.sending():
-                self.on_send_complete(self._close)
+            if self._write_queue.has_next():
+                self.on_done_writing(self._close)
             else:
                 self._close()
 
@@ -204,48 +308,52 @@ class IOHandler(object):
     def _close(self):
         """Close this stream."""
         if self._socket is not None:
-            gen_log.debug('Closing stream(fd: {})'.format(self._sfileno))
+            gen_log.debug('Closing stream(fd: {})'.format(self.handle.fd))
 
-            self._event_loop.remove_handler(self._sfileno)
-            self._event_loop.add_timeout(100, self._socket.close)
+            self.handle.remove_handler()
+
+            self._socket.close()
             self._socket = None
 
             if self._close_cb:
                 self._run_callback(self._close_cb)
 
-    def _check_closed(self):
-        if self._socket is None:
+    def _assert_not_closed(self):
+        if self.closed():
             raise StreamClosedError('Stream closing or closed.')
 
-    def _do_recv(self, recv_buffer):
+    def _do_read(self, recv_buffer):
         return self._socket.recv_into(recv_buffer, self._recv_chunk_size)
 
-    def _do_send(self, send_buffer):
+    def _do_write(self, send_buffer):
         return self._socket.send(send_buffer)
 
     def _handle_events(self, fd, events):
+        #gen_log.debug('Handle event for stream(fd: {})'.format(self.handle.fd))
+
         if self._socket is None:
             gen_log.warning("Got events for closed stream %d", fd)
             return
+
         try:
-            if self._socket is not None and events & self._event_loop.READ:
-                self._handle_recv()
+            if self._socket is not None and events & self._io_loop.READ:
+                self.handle_read()
 
-            if self._socket is not None and events & self._event_loop.WRITE:
+            if self._socket is not None and events & self._io_loop.WRITE:
                 if self._connecting:
-                    self._handle_connect()
+                    self.handle_connect()
                 else:
-                    self._handle_send()
+                    self.handle_write()
 
-            if not self.closed() and events & self._event_loop.ERROR:
-                self._handle_error(
+            if not self.closed() and events & self._io_loop.ERROR:
+                self.handle_error(
                     self._socket.getsockopt(
                         socket.SOL_SOCKET, socket.SO_ERROR))
         except Exception:
             self.close()
             raise
 
-    def _handle_error(self, error):
+    def handle_error(self, error):
         try:
             if self._error_cb is not None:
                 callback = self._error_cb
@@ -254,53 +362,48 @@ class IOHandler(object):
 
             if error not in _ERRNO_CONNRESET:
                 gen_log.warning("Error on stream(fd:%d) caught: %s",
-                    self._sfileno, errno.errorcode[error])
+                    self.handle.fd, errno.errorcode[error])
         finally:
             # On error, close the FD
             self.close()
 
-    def _handle_recv(self):
+    def handle_read(self):
         try:
-#           self._event_loop.add_callback(self._handle_recv)
-            read = self._do_recv(self._recv_buffer)
+            read = self._do_read(self._recv_buffer)
 
             if read is not None:
-                if read > 0 and self._recv_cb:
-                    self._run_callback(self._recv_cb, self._recv_buffer[:read])
+                if read > 0 and self._read_cb:
+                    self._run_callback(self._read_cb, self._recv_buffer[:read])
                 elif read == 0:
                     self.close()
         except (socket.error, IOError, OSError) as ex:
                 if ex.args[0] not in _ERRNO_WOULDBLOCK:
-                    self._handle_error(ex.args[0])
+                    self.handle_error(ex.args[0])
 
-    def _handle_send(self):
-        if not self.sending():
-            if self._send_complete_cb:
-                callback = self._send_complete_cb
-                self._send_complete_cb = None
-                self._run_callback(callback)
-            self.stop_send()
-            return
+    def handle_write(self):
+        if self._write_queue.has_next():
+            try:
+                msg = None
 
-        sent = None
-
-        try:
-            while len(self._send_queue) > 0:
-                msg = self._send_queue.popleft()
-                sent = self._do_send(msg[self._last_send_idx:])
-
-                if (len(msg) - self._last_send_idx) == sent:
-                    self._last_send_idx = 0
+                while self._write_queue.has_next():
+                    msg, offset = self._write_queue.next()
+                    sent = self._do_write(msg[offset:])
+                    self._write_queue.advance(sent)
+            except (socket.error, IOError, OSError) as ex:
+                if ex.args[0] in _ERRNO_WOULDBLOCK:
+                    self._write_queue.appendleft(msg)
                 else:
-                    self._send_queue.appendleft(msg)
-                    self._last_send_idx += sent
-        except (socket.error, IOError, OSError) as ex:
-            if ex.args[0] in _ERRNO_WOULDBLOCK:
-                self._send_queue.appendleft(msg)
-            else:
-                self._handle_error(ex.args[0])
+                    self._write_queue.clear()
+                    self.handle_error(ex.args[0])
+        else:
+            self.handle.disable_writing()
 
-    def _handle_connect(self):
+            if self._write_cb:
+                callback = self._write_cb
+                self._write_cb = None
+                self._run_callback(callback)
+
+    def handle_connect(self):
         if self._on_connect_cb is not None:
             callback = self._on_connect_cb
             self._on_connect_cb = None
@@ -330,37 +433,8 @@ class IOHandler(object):
             # can see it and log the error
             raise
 
-    def _add_event_interest(self, event_interest):
-        """Add io_state to poller."""
-        if not self._event_interest & event_interest:
-            self._event_interest = self._event_interest | event_interest
-            self._update_handler(self._event_interest)
 
-    def _drop_event_interest(self, event_interest):
-        """Stop poller from watching an io_state."""
-        if self._event_interest & event_interest:
-            self._event_interest = self._event_interest & (~event_interest)
-            self._update_handler(self._event_interest)
-
-    def _update_handler(self, event_interest):
-        """Update IOLoop handler with event_interest."""
-        if self._socket is None:
-            return
-
-        self._event_loop.update_handler(
-            self._sfileno, event_interest)
-
-    def _init_event_interest(self, event_interest):
-        self._event_interest = event_interest
-        """initialize the ioloop event handler"""
-        with stack_context.NullContext():
-            self._event_loop.add_handler(
-                self._sfileno,
-                self._handle_events,
-                self._event_interest)
-
-
-class SSLIOHandler(IOHandler):
+class SSLSocketIOHandler(SocketIOHandler):
     """A utility class to write to and read from a non-blocking SSL socket.
 
     If the socket passed to the constructor is already connected,
@@ -368,8 +442,8 @@ class SSLIOHandler(IOHandler):
 
     ssl.wrap_socket(sock, do_handshake_on_connect=False, **kwargs)
 
-    before constructing the `SSLIOHandler`. Unconnected sockets will be
-    wrapped when `SSLIOHandler.connect` is finished.
+    before constructing the `SSLSocketIOHandler`. Unconnected sockets will be
+    wrapped when `SSLSocketIOHandler.connect` is finished.
     """
     def __init__(self, *args, **kwargs):
         """The ``ssl_options`` keyword argument may either be a dictionary
@@ -377,7 +451,7 @@ class SSLIOHandler(IOHandler):
         object.
         """
         self._ssl_options = kwargs.pop('ssl_options', {})
-        super(SSLIOHandler, self).__init__(*args, **kwargs)
+        super(SSLSocketIOHandler, self).__init__(*args, **kwargs)
         self._ssl_accepting = True
         self._handshake_reading = False
         self._handshake_writing = False
@@ -393,13 +467,13 @@ class SSLIOHandler(IOHandler):
             # Indirectly start the handshake, which will run on the next
             # IOLoop iteration and then the real IO event_interest will be set in
             # _handle_events.
-            self._add_event_interest(self._event_loop.WRITE)
+            self.handle.resume_writing()
 
     def reading(self):
-        return self._handshake_reading or super(SSLIOHandler, self).reading()
+        return self._handshake_reading or super(SSLSocketIOHandler, self).reading()
 
     def writing(self):
-        return self._handshake_writing or super(SSLIOHandler, self).writing()
+        return self._handshake_writing or super(SSLSocketIOHandler, self).writing()
 
     def _do_ssl_handshake(self):
         # Based on code from test_ssl.py in the python stdlib
@@ -424,7 +498,7 @@ class SSLIOHandler(IOHandler):
                 except Exception:
                     peer = '(not connected)'
                 gen_log.warning("SSL Error on %d %s: %s",
-                                self._sfileno, peer, err)
+                                self.handle.fd, peer, err)
                 self.close()
                 return
             raise
@@ -477,17 +551,17 @@ class SSLIOHandler(IOHandler):
         else:
             return True
 
-    def _handle_recv(self):
+    def handle_read(self):
         if self._ssl_accepting:
             self._do_ssl_handshake()
         else:
-            super(SSLIOHandler, self)._handle_recv()
+            super(SSLSocketIOHandler, self).handle_read()
 
-    def _handle_send(self):
+    def handle_write(self):
         if self._ssl_accepting:
             self._do_ssl_handshake()
         else:
-            super(SSLIOHandler, self)._handle_send()
+            super(SSLSocketIOHandler, self).handle_write()
 
     def connect(self, address, callback=None, server_hostname=None):
         # Save the user's callback and run it after the ssl handshake
@@ -495,21 +569,21 @@ class SSLIOHandler(IOHandler):
         self._ssl_on_connect_cb = stack_context.wrap(callback)
         self._server_hostname = server_hostname
 
-        super(SSLIOHandler, self).connect(address, callback=None)
+        super(SSLSocketIOHandler, self).connect(address, callback=None)
 
-    def _handle_connect(self):
+    def handle_connect(self):
         # When the connection is complete, wrap the socket for SSL
-        # traffic. Note that we do this by overriding _handle_connect
+        # traffic. Note that we do this by overriding handle_connect
         # instead of by passing a callback to super().connect because
         # user callbacks are enqueued asynchronously on the IOLoop,
-        # but since _handle_events calls _handle_connect immediately
-        # followed by _handle_write we need this to be synchronous.
+        # but since _handle_events calls handle_connect immediately
+        # followed by handle_write we need this to be synchronous.
         self._socket = ssl_wrap_socket(self._socket, self._ssl_options,
                                       server_hostname=self._server_hostname,
                                       do_handshake_on_connect=False)
-        super(SSLIOHandler, self)._handle_connect()
+        super(SSLSocketIOHandler, self).handle_connect()
 
-    def _do_recv(self, recv_buffer):
+    def _do_read(self, recv_buffer):
         if self._ssl_accepting:
             # If the handshake hasn't finished yet, there can't be anything
             # to read (attempting to read may or may not raise an exception
@@ -530,5 +604,5 @@ class SSLIOHandler(IOHandler):
             else:
                 raise
 
-    def _do_send(self, send_buffer):
+    def _do_write(self, send_buffer):
         return self._socket.send(send_buffer)
