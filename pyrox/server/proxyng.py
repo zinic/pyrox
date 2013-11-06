@@ -163,7 +163,7 @@ class DownstreamHandler(ProxyHandler):
                 # When we write to the stream set the callback to resume
                 # reading from downstream.
                 _write_to_stream(self._upstream, data, is_chunked,
-                    self._downstream.handle.resume_reading)
+                                 self._downstream.handle.resume_reading)
             else:
                 # If we're not connected upstream, store the fragment
                 # for later
@@ -174,7 +174,8 @@ class DownstreamHandler(ProxyHandler):
 
         if self._preread_body and len(self._preread_body) > 0:
             _write_to_stream(self._upstream, self._preread_body,
-                self._chunked, self._downstream.handle.resume_reading)
+                             self._chunked,
+                             self._downstream.handle.resume_reading)
             self._preread_body = None
 
     def on_message_complete(self, is_chunked, keep_alive):
@@ -264,6 +265,7 @@ class UpstreamHandler(ProxyHandler):
             self._downstream.write(_CHUNK_CLOSE, callback)
         else:
             callback()
+
 
 class ConnectionTracker(object):
 
@@ -450,7 +452,7 @@ class TornadoHttpProxy(TCPServer):
                       factory as the second element.
     """
     def __init__(self, pipeline_factories, default_us_targets=None,
-            ssl_options=None):
+                 ssl_options=None):
         super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
         self._router = RoundRobinRouter(default_us_targets)
         self.us_pipeline_factory = pipeline_factories[0]

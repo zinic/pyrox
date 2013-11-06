@@ -96,4 +96,3 @@ class RoundRobinRouter(RoutingHandler):
         self._last_default += 1
         idx = self._last_default % len(self._default_routes)
         return self._default_routes[idx]
-

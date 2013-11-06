@@ -90,7 +90,6 @@ class IOHandler(object):
         # TODO:Review - Is this a good idea?
         self._error_cb = None
 
-
     def reading(self):
         raise NotImplementedError()
 
@@ -358,7 +357,7 @@ class SocketIOHandler(IOHandler):
 
             if error not in _ERRNO_CONNRESET:
                 gen_log.warning("Error on stream(fd:%d) caught: %s",
-                    self.handle.fd, errno.errorcode[error])
+                                self.handle.fd, errno.errorcode[error])
         finally:
             # On error, close the FD
             self.close()
@@ -575,8 +574,8 @@ class SSLSocketIOHandler(SocketIOHandler):
         # but since _handle_events calls handle_connect immediately
         # followed by handle_write we need this to be synchronous.
         self._socket = ssl_wrap_socket(self._socket, self._ssl_options,
-                                      server_hostname=self._server_hostname,
-                                      do_handshake_on_connect=False)
+                                       server_hostname=self._server_hostname,
+                                       do_handshake_on_connect=False)
         super(SSLSocketIOHandler, self).handle_connect()
 
     def _do_read(self, recv_buffer):
