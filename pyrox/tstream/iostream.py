@@ -1,20 +1,16 @@
-from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import absolute_import, division, print_function,\
+    with_statement
 
 import collections
 import errno
-import numbers
-import os
 import socket
 import ssl
-import sys
-import re
 
 from tornado import ioloop
-from tornado.log import gen_log, app_log
-from tornado.netutil import ssl_wrap_socket, ssl_match_hostname,\
+from tornado.log import gen_log
+from tornado.netutil import ssl_wrap_socket, ssl_match_hostname, \
     SSLCertificateError
 from tornado import stack_context
-from tornado.util import bytes_type
 
 from datetime import timedelta
 

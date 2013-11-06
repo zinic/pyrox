@@ -1,0 +1,2 @@
+[report]
+omit = pkg/*,setup.py,*egg*,.tox/*,tests/*,build/*,build.py,tools/*,cover/*,examples/*,docs/*,include/*,pyrox.egg-info/
