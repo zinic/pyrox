@@ -1,5 +1,4 @@
 import os
-import sys
 
 import pyrox
 
@@ -23,4 +22,3 @@ def _read(relative_path):
 
 
 VERSION = _read('VERSION')[0]
-
