@@ -211,18 +211,23 @@ class HttpFilterPipeline(object):
                 continue
 
             finst = method[1]
+            _LOG.debug('Checking function instance {} for decorators'.format(finst))
 
             # Assume that if an attribute exists then it is decorated
             if hasattr(finst, '_handles_request_head'):
+                _LOG.debug('Function instance {} handles request head'.format(finst))
                 self._req_head_chain.append((http_filter, finst))
 
             if hasattr(finst, '_handles_request_body'):
+                _LOG.debug('Function instance {} handles request body'.format(finst))
                 self._req_body_chain.append((http_filter, finst))
 
             if hasattr(finst, '_handles_response_head'):
+                _LOG.debug('Function instance {} handles response head'.format(finst))
                 self._resp_head_chain.append((http_filter, finst))
 
             if hasattr(finst, '_handles_response_body'):
+                _LOG.debug('Function instance {} handles response body'.format(finst))
                 self._resp_body_chain.append((http_filter, finst))
 
     def _on_head(self, chain, head):

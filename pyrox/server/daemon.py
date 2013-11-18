@@ -54,6 +54,7 @@ def _resolve_filter_classes(cls_list):
             raise ImportError('Bad filter class: {}'.format(cdef))
 
         module = pynsive.import_module(cdef[:cdef.rfind('.')])
+        _LOG.debug('Searching for filter {} in module {}'.format(cdef, module))
 
         try:
             cls = getattr(module, cdef[cdef.rfind('.') + 1:])
@@ -66,7 +67,10 @@ def _resolve_filter_classes(cls_list):
             else:
                 raise TypeError(
                     'Type of a filter must be a function or a class')
-        except AttributeError:
+
+            _LOG.debug('Found definition for {} as {}'.format(cdef, cls))
+        except AttributeError as ae:
+            _LOG.exception(ae)
             raise ImportError('Unable to import: {}'.format(cdef))
     return filter_cls_list
 
