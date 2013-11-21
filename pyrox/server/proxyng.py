@@ -145,7 +145,7 @@ class DownstreamHandler(ProxyHandler):
     def on_body(self, bytes, length, is_chunked):
         self._chunked = is_chunked
 
-        if self._downstream.receiving():
+        if self._downstream.reading():
             # Hold up on the client side until we're done with this chunk
             self._downstream.handle.disable_reading()
 
