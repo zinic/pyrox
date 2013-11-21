@@ -244,7 +244,7 @@ class SocketIOHandler(IOHandler):
 
     def reading(self):
         """Returns True if we are currently receiving from the stream."""
-        return not self.closed() and self.handle.reading()
+        return not self.closed() and self.handle.is_reading()
 
     def writing(self):
         """Returns True if we are currently writing to the stream."""
