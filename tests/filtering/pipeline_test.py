@@ -20,7 +20,6 @@ class TestFilterWithAllDecorators(filtering.HttpFilter):
 
     @filtering.handles_request_head
     def on_req_head(self, request_head):
-        print('ass')
         self.on_req_head_called = True
 
     @filtering.handles_request_body
