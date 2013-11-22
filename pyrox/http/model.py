@@ -28,7 +28,17 @@ class HttpMessage(object):
     """
     def __init__(self, version='1.1'):
         self.version = version
+        self.local_data = dict()
+
         self._headers = dict()
+        self.set_default_headers()
+
+    def set_default_headers(self):
+        """
+        Allows messages to set default headers that must be added to the
+        message before its construction is complete.
+        """
+        self.header('Content-Length').values.append('0')
 
     @property
     def headers(self):

@@ -174,8 +174,9 @@ def start_pyrox(other_cfg=None):
     logging_manager = get_log_manager()
     logging_manager.configure(config)
 
-    _LOG.info('Upstream targets are: {}'.format(
-        [dst for dst in config.routing.upstream_hosts]))
+    if config.routing.upstream_hosts is not None:
+        _LOG.info('Upstream targets are: {}'.format(
+            [dst for dst in config.routing.upstream_hosts]))
 
     # Set bind host
     bind_host = config.core.bind_host.split(':')

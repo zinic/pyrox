@@ -61,9 +61,16 @@ class NoRoutesAvailableError(Exception):
 
 class RoutingHandler(object):
 
-    def __init__(self, default_routes):
-        self._default_routes = [parse_route_url(r) for r in default_routes]
+    def __init__(self, routes=None):
+        self.routes = list()
         self._next_route = None
+
+        if routes is not None:
+            for route in routes:
+                if route is not None and isinstance(route, str):
+                    self.routes.append(parse_route_url(route))
+                else:
+                    raise TypeError('A route must be either a valid URL string.')
 
     def set_next(self, next_route):
         if next_route is not None and isinstance(next_route, str):
@@ -74,7 +81,7 @@ class RoutingHandler(object):
     def get_next(self):
         next = None
 
-        if self._next_route:
+        if self._next_route is not None:
             next = self._next_route
             self._next_route = None
         else:
@@ -88,11 +95,16 @@ class RoutingHandler(object):
 
 class RoundRobinRouter(RoutingHandler):
 
-    def __init__(self, default_routes):
-        super(RoundRobinRouter, self).__init__(default_routes)
+    def __init__(self, routes):
+        super(RoundRobinRouter, self).__init__(routes)
         self._last_default = 0
 
     def _get_next(self):
-        self._last_default += 1
-        idx = self._last_default % len(self._default_routes)
-        return self._default_routes[idx]
+        next_route = None
+
+        if len(self.routes) > 0:
+            self._last_default += 1
+            idx = self._last_default % len(self.routes)
+            next_route = self.routes[idx]
+
+        return next_route

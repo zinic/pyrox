@@ -34,6 +34,16 @@ _BAD_GATEWAY_RESP.status = '502 Bad Gateway'
 _BAD_GATEWAY_RESP.header('Server').values.append('pyrox/{}'.format(VERSION))
 _BAD_GATEWAY_RESP.header('Content-Length').values.append('0')
 
+"""
+Default return object on no route or upstream not responding. This should
+be configurable.
+"""
+_UPSTREAM_UNAVAILABLE = HttpResponse()
+_UPSTREAM_UNAVAILABLE.version = b'1.1'
+_UPSTREAM_UNAVAILABLE.status = '503 Service Unavailable'
+_UPSTREAM_UNAVAILABLE.header('Server').values.append('pyrox/{}'.format(VERSION))
+_UPSTREAM_UNAVAILABLE.header('Content-Length').values.append('0')
+
 
 def _write_to_stream(stream, data, is_chunked, callback=None):
     if is_chunked:
@@ -363,10 +373,17 @@ class ProxyConnection(object):
         self._downstream.read(self._on_downstream_read)
 
     def _connect_upstream(self, request, route=None):
-        if route:
+        if route is not None:
             # This does some type checking for routes passed up via filter
             self._router.set_next(route)
         upstream_target = self._router.get_next()
+
+        print('Next is: {}'.format(upstream_target))
+
+        if upstream_target is None:
+            self._downstream.write(_UPSTREAM_UNAVAILABLE.to_bytes(),
+                self._downstream.handle.resume_reading)
+            return
 
         # Hold downstream reads
         self._hold_downstream = True

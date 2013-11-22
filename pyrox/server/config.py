@@ -13,7 +13,7 @@ _DEFAULTS = {
         'key_file': None
     },
     'routing': {
-        'upstream_hosts': 'http://localhost:80'
+        'upstream_hosts': None
     },
     'pipeline': {
         'use_singletons': False
@@ -315,4 +315,7 @@ class RoutingConfiguration(ConfigurationPart):
             upstream_hosts = http://host:port, https://host:port
         """
         hosts = self.get('upstream_hosts')
-        return [host for host in _split_and_strip(hosts, ',')]
+
+        if hosts is not None:
+            return [host for host in _split_and_strip(hosts, ',')]
+        return None
