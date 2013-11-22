@@ -98,6 +98,35 @@ expected interface.
             output.write(msg_part)
 
 
+Utilizing Pyrox's HTTP Model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Pyrox HTTP model is quite feature-full and has many helpers designed to
+do their best in making your life easier. Below are come common usage
+patterns available.
+
+**Passing Arbitrary Data to the Next Filter**
+
+Pyrox HTTP request and response objects inherit from a common class called
+the HTTP message. The HTTP message has an attribute called local_data which
+travels along with the message object to the next filter in the pipeline.
+The following filter may then search this attribute for any interesting
+data, thus allowing filters to sparingly communicate state without having
+to modify the HTTP message itself.
+
+::
+
+    import uuid
+    import pyrox.filtering as filtering
+
+    class FilterTest(filtering.HttpFilter):
+
+        @filtering.handles_request_head
+        def on_request_head(self, request_head):
+            request_head.local_data['transaction_id'] = str(uuid.uuid4())
+            return filtering.next()
+
+
 Pipeline Processing and Logic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
