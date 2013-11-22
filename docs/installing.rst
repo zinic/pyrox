@@ -7,7 +7,7 @@ Debian Compatible Systems
 Download the correct .deb file for your architecture.
 
 * Debian Wheezy (No Link Available Yet)
-* `Ubuntu 12.04 LTS <http://166.78.244.178/pool/squeeze/main/p/pyrox/pyrox_0.4.0_amd64.deb>`_
+* `Ubuntu 12.04 LTS <http://166.78.244.178/pool/squeeze/main/p/pyrox/pyrox_0.4.1_amd64.deb>`_
 
 ::
 
