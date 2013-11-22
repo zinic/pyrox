@@ -378,8 +378,6 @@ class ProxyConnection(object):
             self._router.set_next(route)
         upstream_target = self._router.get_next()
 
-        print('Next is: {}'.format(upstream_target))
-
         if upstream_target is None:
             self._downstream.write(_UPSTREAM_UNAVAILABLE.to_bytes(),
                 self._downstream.handle.resume_reading)

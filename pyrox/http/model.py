@@ -23,8 +23,16 @@ class HttpMessage(object):
     messages share common structures.
 
     Attributes:
+        headers     A dictionary of the headers currently stored in this
+                    HTTP message.
+
         version     A bytearray or string value representing the major-minor
                     version of the HttpMessage.
+
+        local_data  The local_data variable is a dictionary that may be
+                    used as a holding place for data that other filters
+                    may then access and utilize. Setting entries in this
+                    dictionary does not modify the HTTP model in anyway.
     """
     def __init__(self, version='1.1'):
         self.version = version

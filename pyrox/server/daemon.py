@@ -221,7 +221,7 @@ you run Pyrox in production with this feature enabled.
     for i in range(num_processes):
         pid = os.fork()
         if pid == 0:
-            print('Starting process {}'.format(i))
+            _LOG.info('Starting process {}'.format(i))
             start_proxy(sockets, config)
             sys.exit(0)
         else:
