@@ -20,13 +20,13 @@ case "$1" in
         if [ ! -d /var/log/pyrox ]; then
             mkdir /var/log/pyrox
             chown -R pyrox:adm /var/log/pyrox/
-            chmod 0750 /var/log/pyrox/
+            chmod 0755 /var/log/pyrox/
         fi
 
         if [ ! -d /var/lib/pyrox ]; then
             mkdir /var/lib/pyrox
             chown pyrox:adm -R /var/lib/pyrox/ /etc/pyrox
-            chmod -R 0750 /etc/pyrox/
+            chmod -R 0755 /etc/pyrox/
         fi
     ;;
 
