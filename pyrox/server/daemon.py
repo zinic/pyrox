@@ -167,13 +167,11 @@ def start_proxy(sockets, config):
     IOLoop.current().start()
 
 
-def start_pyrox(other_cfg=None):
-    config = load_pyrox_config(other_cfg) if other_cfg else load_pyrox_config()
+def start_pyrox(cfg=None, cfg_location=None):
+    if cfg is None:
+        config = load_pyrox_config(cfg_location)
 
-    # Init logging
-    logging_manager = get_log_manager()
-    logging_manager.configure(config)
-
+    # Log some important things
     if config.routing.upstream_hosts is not None:
         _LOG.info('Upstream targets are: {}'.format(
             [dst for dst in config.routing.upstream_hosts]))

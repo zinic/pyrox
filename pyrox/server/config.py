@@ -48,7 +48,10 @@ def _host_tuple(host_str):
         raise ConfigurationError('Malformed host: {}'.format(host_str))
 
 
-def load_pyrox_config(location='/etc/pyrox/pyrox.conf'):
+def load_pyrox_config(location):
+    if location is None:
+        location = '/etc/pyrox/pyrox.conf'
+
     return load_config('pyrox.server.config', location, _DEFAULTS)
 
 

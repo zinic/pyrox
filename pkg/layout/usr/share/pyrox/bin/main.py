@@ -15,7 +15,7 @@ args_parser = argparse.ArgumentParser(
 args_parser.add_argument(
     '-c',
     nargs='?',
-    dest='other_cfg',
+    dest='cfg_location',
     default=None,
     help="""
         Sets the configuration file to load on startup. If unset this
@@ -34,7 +34,7 @@ args_parser.add_argument(
 
 
 def start(args):
-    server.start_pyrox(other_cfg=args.other_cfg)
+    server.start_pyrox(cfg_location=args.cfg_location)
 
 
 if len(sys.argv) > 1:
