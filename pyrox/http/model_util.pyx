@@ -24,8 +24,17 @@ cdef header_to_bytes(char *name, object values, object bytes):
 
 
 cdef headers_to_bytes(object headers, object bytes):
+    bool needs_content_length = True
+
     for header in headers:
+        if header.name == 'content-length':
+            has_content_length = False
+
         header_to_bytes(header.name, header.values, bytes)
+
+    if needs_content_length:
+        header_to_bytes('content-length', '0', bytes)
+
     bytes.extend(b'\r\n')
 
 

@@ -168,7 +168,8 @@ def start_proxy(sockets, config):
 
 
 def start_pyrox(cfg=None, cfg_location=None):
-    if cfg is None:
+    config = cfg
+    if config is None:
         config = load_pyrox_config(cfg_location)
 
     # Log some important things

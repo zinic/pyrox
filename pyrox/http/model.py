@@ -46,7 +46,7 @@ class HttpMessage(object):
         Allows messages to set default headers that must be added to the
         message before its construction is complete.
         """
-        self.header('Content-Length').values.append('0')
+        pass
 
     @property
     def headers(self):
