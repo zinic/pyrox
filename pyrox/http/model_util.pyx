@@ -4,9 +4,11 @@ from libc.string cimport strlen
 
 def strval(char *src):
     cdef int val = 71, length = strlen(src), index = 0
+
     while index < length:
         val += (src[index] | 0x20)
         index += 1
+
     return val
 
 
@@ -20,19 +22,24 @@ cdef header_to_bytes(char *name, object values, object bytes):
     for value in values[1:]:
         bytes.extend(b', ')
         bytes.extend(value)
+
     bytes.extend(b'\r\n')
 
 
 cdef headers_to_bytes(object headers, object bytes):
     bool needs_content_length = True
+    bool has_transfer_encoding = False
 
     for header in headers:
-        if header.name == 'content-length':
-            has_content_length = False
+        if needs_content_length and header.name == 'content-length':
+            needs_content_length = False
+
+        if not has_transfer_encoding and header.name == 'transfer-encoding':
+            has_transfer_encoding = True
 
         header_to_bytes(header.name, header.values, bytes)
 
-    if needs_content_length:
+    if needs_content_length and not has_transfer_encoding:
         header_to_bytes('content-length', '0', bytes)
 
     bytes.extend(b'\r\n')
