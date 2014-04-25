@@ -170,7 +170,6 @@ class FileDescriptorChannel(Channel):
 
     def _add_event_interest(self, event_interest):
         """Add io_state to poller."""
-        print('fileno: {}'.format(self.fileno))
         if not self._event_interests & event_interest:
             self._event_interests = self._event_interests | event_interest
             self._io_loop.update_handler(self.fileno, self._event_interests)
@@ -289,6 +288,10 @@ class SocketChannel(FileDescriptorChannel):
     def error(self):
         self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
 
+    def __str__(self):
+        return '(fd:{}) SocketChannel(addr:{})'.format(
+            self.fileno, self._socket.getsockname())
+
 
 class ChannelWrapper(Channel):
 
@@ -331,7 +334,6 @@ class ChannelHandler(object):
         # Channel init
         self.channel = channel
         self.channel.set_handler(self._on_events)
-        self.channel.enable_reads()
 
         # Wrap the channel for niceness
         self.buffered_channel = BufferedChannel(self.channel)
@@ -419,7 +421,7 @@ class EventHandler(object):
         next_codec_idx = codec_idx + 1
 
         # Check if another codec is awaiting processing
-        if next_codec_idx != len(read_codecs):
+        if read_codecs is not None and next_codec_idx <= len(read_codecs):
             try:
                 result = read_codecs[codec_idx].on_data(channel, data)
 
@@ -475,7 +477,7 @@ class EventHandler(object):
         write_codecs = self._codecs.upstream
         next_codec_idx = codec_idx + 1
 
-        if next_codec_idx != len(write_codecs):
+        if write_codecs is not None and next_codec_idx != len(write_codecs):
             try:
                 result = write_codecs[codec_idx].on_data(channel, data)
 
@@ -496,6 +498,12 @@ class EventHandler(object):
         """Wrap running callbacks in try/except to allow us to
         close our socket."""
 
+        # TODO: Find a better way to do this
+        channel = args[0]
+
+        if channel is None:
+            raise TypeError('Channel argument must be specified for callbacks')
+
         def _callback_wrapper():
             try:
                 # Use a NullContext to ensure that all StackContexts are run
@@ -509,7 +517,7 @@ class EventHandler(object):
                 # (It would eventually get closed when the socket object is
                 # gc'd, but we don't want to rely on gc happening before we
                 # run out of file descriptors)
-                self.close()
+                channel.close()
 
                 # Re-raise the exception so that IOLoop.handle_callback_exception
                 # can see it and log the error
