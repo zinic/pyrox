@@ -13,8 +13,17 @@ NEXT_FILTER = 0
 CONSUME = 1
 REJECT = 2
 ROUTE = 3
+REPLY = 4
 
-BREAKING_ACTIONS = (CONSUME, REJECT, ROUTE)
+_ACTION_NAMES = {
+    0: 'NEXT_FILTER',
+    1: 'CONSUME',
+    2: 'REJECT',
+    3: 'ROUTE',
+    4: 'REPLY'
+}
+
+_BREAKING_ACTIONS = (CONSUME, REJECT, ROUTE, REPLY)
 
 
 class FilterAction(object):
@@ -34,29 +43,23 @@ class FilterAction(object):
         self.payload = payload
 
     def breaks_pipeline(self):
-        return self.kind in BREAKING_ACTIONS
+        return self.kind in _BREAKING_ACTIONS
+
+    def intercepts_request(sefl):
+        return self.is_replying()
 
     def is_consuming(self):
         return self.kind == CONSUME
 
-    def is_rejecting(self):
-        return self.kind == REJECT
+    def is_replying(self):
+        return self.kind == REPLY
 
     def is_routing(self):
         return self.kind == ROUTE
 
     def __str__(self):
-        if self.kind == NEXT_FILTER:
-            action_kind = 'NEXT_FILTER'
-        elif self.kind == CONSUME:
-            action_kind = 'CONSUME'
-        elif self.kind == REJECT:
-            action_kind = 'REJECT'
-        elif self.kind == ROUTE:
-            action_kind = 'ROUTE'
-
         return 'Action({}) - Is breaking flow: {}'.format(
-            action_kind, self.breaks_pipeline())
+            _ACTION_NAMES[self.kind], self.breaks_pipeline())
 
 
 def handles_request_head(request_func):
@@ -143,6 +146,20 @@ def consume():
     return _DEFAULT_CONSUME_ACTION
 
 
+def reply(response, src):
+    """
+    A special type of rejection that implies willful handling of a request.
+    This call may optionally include a stream or a data blob to take the
+    place of the response content body.
+
+    :param response: the response object to reply to the client with
+    """
+    if response == None:
+        raise TypeError('The response of a reply must be a response.')
+
+    return FilterAction(REPLY, (response, src))
+
+
 def reject(response=None):
     """
     Rejects the request that this event is related to. Rejection may happen
@@ -153,8 +170,8 @@ def reject(response=None):
 
     :param response: the response object to reply to the client with
     """
-    return FilterAction(REJECT, response) if response\
-        else FilterAction(REJECT, _DEFAULT_REJECT_RESP)
+    return FilterAction(REPLY, (response, )) if response != None\
+        else FilterAction(REPLY, (_DEFAULT_REJECT_RESP, ))
 
 
 def route(upstream_target):

@@ -83,7 +83,7 @@ class ProxyHandler(ParserDelegate):
         self._http_msg = http_msg
         self._chunked = False
         self._last_header_field = None
-        self._rejected = False
+        self._intercepted = False
 
     def on_http_version(self, major, minor):
         self._http_msg.version = '{}.{}'.format(major, minor)
@@ -138,9 +138,9 @@ class DownstreamHandler(ProxyHandler):
                 self._http_msg.header('transfer-encoding').values.append('chunked')
 
         # If we're rejecting then we're not going to connect to upstream
-        if action.is_rejecting():
-            self._rejected = True
-            self._response = action.payload
+        if action.intercepts_request():
+            self._intercepted = True
+            self._response_tuple = action.payload
         else:
             # Hold up on the client side until we're done negotiating
             # connections.
@@ -160,7 +160,7 @@ class DownstreamHandler(ProxyHandler):
             self._downstream.handle.disable_reading()
 
         # Rejections simply discard the body
-        if not self._rejected:
+        if not self._intercepted:
             accumulator = AccumulationStream()
             data = bytes
 
@@ -195,8 +195,8 @@ class DownstreamHandler(ProxyHandler):
         if keep_alive:
             self._http_msg = HttpRequest()
 
-        if self._rejected:
-            self._downstream.write(self._response.to_bytes())
+        if self._intercepted:
+            self._downstream.write(self._response_tuple[0].to_bytes())
         elif is_chunked or self._chunked:
             # Finish the last chunk.
             self._upstream.write(_CHUNK_CLOSE)
@@ -232,14 +232,14 @@ class UpstreamHandler(ProxyHandler):
                 self._http_msg.header('transfer-encoding').values.append('chunked')
 
         if action.is_rejecting():
-            self._rejected = True
-            self._response = action.payload
+            self._intercepted = True
+            self._response_tuple = action.payload
         else:
             self._downstream.write(self._http_msg.to_bytes())
 
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
-        if not self._rejected:
+        if not self._intercepted:
             accumulator = AccumulationStream()
             data = bytes
 
@@ -267,7 +267,7 @@ class UpstreamHandler(ProxyHandler):
             self._http_msg = HttpResponse()
             callback = self._downstream.handle.resume_reading
 
-        if self._rejected:
+        if self._intercepted:
             # Serialize our message to them
             self._downstream.write(self._http_msg.to_bytes(), callback)
         elif is_chunked or self._chunked:
