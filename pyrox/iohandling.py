@@ -36,6 +36,22 @@ _SHOULD_LOG_DEBUG_OUTPUT = gen_log.isEnabledFor('DEBUG')
 # Sharable thread local instance
 _THREAD_LOCAL = threading.local()
 
+# Constants from the epoll module
+_EPOLLIN = 0x001
+_EPOLLPRI = 0x002
+_EPOLLOUT = 0x004
+_EPOLLERR = 0x008
+_EPOLLHUP = 0x010
+_EPOLLRDHUP = 0x2000
+_EPOLLONESHOT = (1 << 30)
+_EPOLLET = (1 << 31)
+
+# Our events map exactly to the epoll events
+NONE = 0
+READ = _EPOLLIN
+WRITE = _EPOLLOUT
+ERROR = _EPOLLERR | _EPOLLHUP
+
 
 class ChannelError(IOError):
     pass
@@ -78,7 +94,7 @@ class FileDescriptorChannel(Channel):
 
         self.fileno = fileno
         self._io_loop = io_loop or ioloop.IOLoop.current()
-        self._event_interests = self._io_loop.ERROR
+        self._event_interests = ERROR
 
         # Is there a handler set?
         self._has_handler = False
@@ -102,17 +118,17 @@ class FileDescriptorChannel(Channel):
 
     def remove_handler(self):
         self._io_loop.remove_handler(self.fileno)
-        self._event_interests = self._io_loop.ERROR
+        self._event_interests = ERROR
         self._has_handler = False
 
     def errors_enabled(self):
-        return self._event_interests & self._io_loop.ERROR
+        return self._event_interests & ERROR
 
     def reads_enabled(self):
-        return self._event_interests & self._io_loop.READ
+        return self._event_interests & READ
 
     def writes_enabled(self):
-        return self._event_interests & self._io_loop.WRITE
+        return self._event_interests & WRITE
 
     def disable_errors(self):
         """
@@ -121,7 +137,7 @@ class FileDescriptorChannel(Channel):
         if _SHOULD_LOG_DEBUG_OUTPUT:
             gen_log.debug('Halting error events for stream(fd:{})'.format(
                 self.fileno))
-        self._drop_event_interest(self._io_loop.ERROR)
+        self._drop_event_interest(ERROR)
 
     def disable_reads(self):
         """
@@ -130,7 +146,7 @@ class FileDescriptorChannel(Channel):
         if _SHOULD_LOG_DEBUG_OUTPUT:
             gen_log.debug('Halting read events for stream(fd:{})'.format(
                 self.fileno))
-        self._drop_event_interest(self._io_loop.READ)
+        self._drop_event_interest(READ)
 
     def disable_writes(self):
         """
@@ -139,7 +155,7 @@ class FileDescriptorChannel(Channel):
         if _SHOULD_LOG_DEBUG_OUTPUT:
             gen_log.debug('Halting write events for stream(fd:{})'.format(
                 self.fileno))
-        self._drop_event_interest(self._io_loop.WRITE)
+        self._drop_event_interest(WRITE)
 
     def enable_errors(self):
         """
@@ -148,7 +164,7 @@ class FileDescriptorChannel(Channel):
         if _SHOULD_LOG_DEBUG_OUTPUT:
             gen_log.debug('Resuming error events for stream(fd:{})'.format(
                 self.fileno))
-        self._add_event_interest(self._io_loop.ERROR)
+        self._add_event_interest(ERROR)
 
     def enable_reads(self):
         """
@@ -157,7 +173,7 @@ class FileDescriptorChannel(Channel):
         if _SHOULD_LOG_DEBUG_OUTPUT:
             gen_log.debug('Resuming read events for stream(fd:{})'.format(
                 self.fileno))
-        self._add_event_interest(self._io_loop.READ)
+        self._add_event_interest(READ)
 
     def enable_writes(self):
         """
@@ -166,7 +182,7 @@ class FileDescriptorChannel(Channel):
         if _SHOULD_LOG_DEBUG_OUTPUT:
             gen_log.debug('Resuming write events for stream(fd:{})'.format(
                 self.fileno))
-        self._add_event_interest(self._io_loop.WRITE)
+        self._add_event_interest(WRITE)
 
     def _add_event_interest(self, event_interest):
         """Add io_state to poller."""
@@ -185,6 +201,12 @@ def _is_connect_error(ex):
     error = ex.args[0]
     return error != errno.EINPROGRESS and error not in _ERRNO_WOULDBLOCK
 
+
+def watch_channel(channel, event_handler):
+    handler = ChannelHandler(channel, event_handler)
+    channel.set_handler(handler.on_events)
+
+    return handler
 
 def connect_ssl_socket(socket_channel, address,
         ssl_options=None, server_hostname=None):
@@ -251,7 +273,7 @@ class SocketChannel(FileDescriptorChannel):
                 raise
 
     def has_queued_send(self):
-        return self._send_idx != self._send_len
+        return self._send_idx < self._send_len
 
     def recv(self, bufsize):
         return self._socket.recv(bufsize)
@@ -266,7 +288,6 @@ class SocketChannel(FileDescriptorChannel):
         self._send_idx = 0
         self._send_len = len(data)
         self._send_data = data
-        self.enable_writes()
 
     def flush(self):
         if self.has_queued_send():
@@ -293,64 +314,72 @@ class SocketChannel(FileDescriptorChannel):
             self.fileno, self._socket.getsockname())
 
 
-class ChannelWrapper(Channel):
+class BufferedChannel(object):
 
     def __init__(self, channel):
         self.actual_channel = channel
+        self._send_queue = collections.deque()
 
-    def __getattr__(self, name):
-        if hasattr(self.actual_channel, name):
-            return getattr(self.actual_channel, name)
-        return AttributeError('No attribute named: {}.'.format(name))
+    def release_send_queue(self):
+        queue_ref = self._send_queue
+        self._send_queue = collections.deque()
 
+        return queue_ref
 
-class BufferedChannel(ChannelWrapper):
-
-    def __init__(self, channel):
-        super(BufferedChannel, self).__init__(channel)
-        self.send_queue = collections.deque()
+    def has_queued_send(self):
+        return len(self._send_queue) > 0
 
     def send(self, data):
-        self.send_queue.append(data)
+        self._send_queue.append(data)
 
     def flush(self):
         flushed = False
 
         if self.actual_channel.flush():
-            if len(self.send_queue) > 0:
-                self.actual_channel.send(self.send_queue.popleft())
+            if len(self._send_queue) > 0:
+                self.actual_channel.send(self._send_queue.popleft())
+                flushed = self.actual_channel.flush()
             else:
                 flushed = True
-
         return flushed
+
+    def __getattr__(self, name):
+        if name == 'flush':
+            return self.flush
+        elif name == 'send':
+            return self.send
+        elif hasattr(self.actual_channel, name):
+            return getattr(self.actual_channel, name)
+
+        return AttributeError('No attribute named: {}.'.format(name))
 
 
 class ChannelHandler(object):
 
-    def __init__(self, channel, event_handler, io_loop=None, recv_chunk_size=4096):
-        # Create a reference to the ioloop
-        self._io_loop = io_loop or ioloop.IOLoop.current()
-
+    def __init__(self, channel, event_handler, recv_chunk_size=4096):
         # Channel init
-        self.channel = channel
-        self.channel.set_handler(self._on_events)
-
-        # Wrap the channel for niceness
-        self.buffered_channel = BufferedChannel(self.channel)
+        self.channel = BufferedChannel(channel)
 
         # Create a reference to the event handler
         self._event_handler = event_handler
 
-    def _on_events(self, fd, events):
+    def on_events(self, fd, events):
         # Read and writes only check to see if the socket has been
         # reclaimed.
-        if events & self._io_loop.READ:
-            self._event_handler.on_read_ready(self.channel)
+        if events & READ:
+            if self.channel.listening:
+                self._event_handler.on_accept(self.channel.accept())
+            else:
+                self._event_handler.on_read_ready(self.channel)
 
-        if events & self._io_loop.WRITE:
-            self._event_handler.on_write_ready(self.buffered_channel)
+        if events & WRITE:
+            if self.channel.connecting:
+                self._event_handler.on_connect(self.channel)
+                self.channel.connecting = False
+            else:
+                self._event_handler.on_write_ready(self.channel)
 
-        if events & self._io_loop.ERROR:
+        if events & ERROR:
             self._event_handler.on_error(self.channel)
 
 
@@ -363,8 +392,8 @@ class ChannelCodec(object):
 class ChannelCodecPipeline(object):
 
     def __init__(self, upstream_codecs=None, downstream_codecs=None):
-        self.upstream = upstream_codecs
-        self.downstream = downstream_codecs
+        self.upstream = upstream_codecs or tuple()
+        self.downstream = downstream_codecs or tuple()
 
 
 class EventHandler(object):
@@ -398,16 +427,15 @@ class EventHandler(object):
         pass
 
     def on_read_ready(self, channel):
-        if channel.listening:
-            self._add_callback(self.on_accept, channel.accept())
-        else:
-            recv_buffer = _THREAD_LOCAL.read_buffer
-            bytes_received = channel.recv_into(
-                recv_buffer, self._read_chunk_size)
+        recv_buffer = _THREAD_LOCAL.read_buffer
+        bytes_received = channel.recv_into(
+            recv_buffer, self._read_chunk_size)
 
-            if bytes_received > 0:
-                self._add_callback(self._on_read, channel,
-                    recv_buffer[:bytes_received], 0)
+        if bytes_received > 0:
+            self._add_callback(self._on_read, channel,
+                recv_buffer[:bytes_received], 0)
+        else:
+            self._add_callback(self.on_close, channel)
 
     """
     TODO:Enhancement - pass along the codec pipeline so we don't rely on the
@@ -415,15 +443,14 @@ class EventHandler(object):
     of the codec pipeline to change without interrupting what is already
     being processed.
     """
-    def _on_read(self, channel, data, codec_idx):
+    def _on_read(self, channel, message, codec_idx):
         """Process through the downstream (read) codec pipeline"""
         read_codecs = self._codecs.downstream
-        next_codec_idx = codec_idx + 1
 
         # Check if another codec is awaiting processing
-        if read_codecs is not None and next_codec_idx <= len(read_codecs):
+        if codec_idx < len(read_codecs):
             try:
-                result = read_codecs[codec_idx].on_data(channel, data)
+                result = read_codecs[codec_idx].on_data(channel, message)
 
                 # Results are passed down the codec pipeline. Any resulut
                 # that is not None is assumed to imply that the result
@@ -431,68 +458,57 @@ class EventHandler(object):
                 # processing may continue
                 if result is not None:
                     self._add_callback(self._on_read, channel,
-                        result, next_codec_idx)
+                        result, codec_idx + 1)
+                    return
             except Exception as ex:
                 gen_log.error('Failure on codec({}) - {}'.format(
                     codec_idx, ex))
-        elif channel.has_queued_send():
+
+        if channel.has_queued_send():
             # We disable further reads to maintain that writes happen in a
             # serial manner
             if channel.reads_enabled():
                 channel.disable_reads()
                 self._was_reading = True
 
-            # We create a copy and clear the original - since this is a
-            # shallow copy it's a nice way of processing the queued data
-            # through the pipeline
-            send_queue = copy.copy(channel.send_queue)
-            channel.send_queue.clear()
-
-            self._process_writes(channel, send_queue)
+            # Process the write chain
+            self._add_callback(self._process_send_queue, channel,
+                channel.release_send_queue())
 
     def on_write_ready(self, channel):
-        if channel.connecting:
-            self._add_callback(self.on_connect, channel)
-            channel.connecting = False
-        if self.channel.flush():
-            self.channel.disable_writes()
+        if channel.flush():
+            channel.disable_writes()
 
             if self._was_reading:
                 self._was_reading = False
-                self.enable_reads()
+                channel.enable_reads()
 
-    def _process_writes(self, channel):
-        if len(self._send_queue) > 0:
-            next_message = send_queue.popleft()
-
-            # Type checking goes here... haha... ha...
-            self._add_callback(self._on_write, channel,
-                send_queue, next_message, 0)
+    def _process_send_queue(self, channel, send_queue):
+        if len(send_queue) > 0:
+            self._process_message(channel, send_queue, send_queue.popleft())
         else:
-            self._send_queue = None
-            self.enable_writes()
+            channel.enable_writes()
 
-
-    def _on_write(self, channel, data, codec_idx):
+    def _process_message(self, channel, send_queue, message, codec_idx=0):
         write_codecs = self._codecs.upstream
-        next_codec_idx = codec_idx + 1
 
-        if write_codecs is not None and next_codec_idx != len(write_codecs):
+        if codec_idx < len(write_codecs):
             try:
-                result = write_codecs[codec_idx].on_data(channel, data)
+                result = write_codecs[codec_idx].on_data(channel, message)
 
                 # Results are passed down the codec pipeline
                 if result is not None:
-                    self._add_callback(self._on_write, channel,
-                        result, next_codec_idx)
+                    self._add_callback(self._process_message, channel,
+                        send_queue, result, codec_idx + 1)
+                    return
             except Exception as ex:
                 gen_log.error('Failure on codec({}) - {}'.format(
                     codec_idx, ex))
-        else:
-            if data is not None:
-                channel.send(data)
-            self._process_writes(channel)
 
+        if message is not None:
+            channel.send(message)
+
+        self._add_callback(self._process_send_queue, channel, send_queue)
 
     def _add_callback(self, callback, *args, **kwargs):
         """Wrap running callbacks in try/except to allow us to
