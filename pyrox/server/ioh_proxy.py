@@ -53,10 +53,9 @@ class EchoCodec(ioh.ChannelCodec):
         print(data)
 
         if data.endswith('\n'):
-            channel.send(
-                'HTTP/1.1 200 OK\r\n'
-                'Content-Length: 0\r\n'
-                '\r\n')
+            channel.send('HTTP/1.1 200 OK\r\n')
+            channel.send('Content-Length: 0\r\n')
+            channel.send('\r\n')
 
 
 event_handler = MyEventHandler()

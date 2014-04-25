@@ -338,7 +338,6 @@ class BufferedChannel(object):
         if self.actual_channel.flush():
             if len(self._send_queue) > 0:
                 self.actual_channel.send(self._send_queue.popleft())
-                flushed = self.actual_channel.flush()
             else:
                 flushed = True
         return flushed
