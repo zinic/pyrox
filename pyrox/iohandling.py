@@ -53,8 +53,43 @@ WRITE = _EPOLLOUT
 ERROR = _EPOLLERR | _EPOLLHUP
 
 
+def _is_connect_error(ex):
+    error = ex.args[0]
+    return error != errno.EINPROGRESS and error not in _ERRNO_WOULDBLOCK
+
+
+def ssl_wrap_socket(schannel, address, options=None, remote_host=None):
+    # Wrap the socket using the Pyhton SSL socket library
+    schannel._socket = ssl_wrap_socket(
+        socket=schannel._socket,
+        ssl_options=options,
+        server_hostname=remote_host,
+        do_handshake_on_connect=False)
+
+
 class ChannelError(IOError):
     pass
+
+
+class ChannelEventHandler(object):
+
+    def on_accept(self, new_channel):
+        pass
+
+    def on_close(self, channel):
+        pass
+
+    def on_error(self, channel):
+        pass
+
+    def on_connect(self, channel):
+        pass
+
+    def on_read(self, channel, message):
+        pass
+
+    def on_send(self, channel, message):
+        pass
 
 
 class Channel(object):
@@ -197,29 +232,6 @@ class FileDescriptorChannel(Channel):
             self._io_loop.update_handler(self.fileno, self._event_interests)
 
 
-def _is_connect_error(ex):
-    error = ex.args[0]
-    return error != errno.EINPROGRESS and error not in _ERRNO_WOULDBLOCK
-
-
-def watch_channel(channel, event_handler):
-    handler = ChannelHandler(channel, event_handler)
-    channel.set_handler(handler.on_events)
-
-    return handler
-
-def connect_ssl_socket(socket_channel, address,
-        ssl_options=None, server_hostname=None):
-    # Wrap the socket using the Pyhton SSL socket library
-    socket_channel._socket = ssl_wrap_socket(
-        socket=self._socket,
-        ssl_options=self._ssl_options,
-        server_hostname=self._server_hostname,
-        do_handshake_on_connect=False)
-
-    connect_socket(socket_channel, address)
-
-
 class SocketChannel(FileDescriptorChannel):
 
     def __init__(self, sock, address=None, io_loop=None):
@@ -314,22 +326,40 @@ class SocketChannel(FileDescriptorChannel):
             self.fileno, self._socket.getsockname())
 
 
-class BufferedChannel(object):
+class ManagedChannel(object):
 
     def __init__(self, channel):
+        self.closing = False
+        self.was_reading = False
+
         self.actual_channel = channel
         self._send_queue = collections.deque()
+
+    def close(self):
+        # Try not to close twice
+        if not self.closing and not self.closed():
+            self.closing = True
+            self.disable_reads()
+
+            if self.has_queued_send():
+                # We need to flush everything before closing
+                self.enable_writes()
+            else:
+                # If there's nothing left to flush close ASAP
+                self.actual_channel.close()
 
     def release_send_queue(self):
         queue_ref = self._send_queue
         self._send_queue = collections.deque()
-
         return queue_ref
 
     def has_queued_send(self):
         return len(self._send_queue) > 0
 
     def send(self, data):
+        if self.closing:
+            raise ChannelError('Channel closing. Sends are not allowed at this time')
+
         self._send_queue.append(data)
 
     def flush(self):
@@ -353,168 +383,115 @@ class BufferedChannel(object):
         return AttributeError('No attribute named: {}.'.format(name))
 
 
-class ChannelHandler(object):
+class ChannelEventRouter(object):
 
-    def __init__(self, channel, event_handler, recv_chunk_size=4096):
-        # Channel init
-        self.channel = BufferedChannel(channel)
-
-        # Create a reference to the event handler
-        self._event_handler = event_handler
-
-    def on_events(self, fd, events):
-        # Read and writes only check to see if the socket has been
-        # reclaimed.
-        if events & READ:
-            if self.channel.listening:
-                self._event_handler.on_accept(self.channel.accept())
-            else:
-                self._event_handler.on_read_ready(self.channel)
-
-        if events & WRITE:
-            if self.channel.connecting:
-                self._event_handler.on_connect(self.channel)
-                self.channel.connecting = False
-            else:
-                self._event_handler.on_write_ready(self.channel)
-
-        if events & ERROR:
-            self._event_handler.on_error(self.channel)
-
-
-class ChannelCodec(object):
-
-    def on_data(self, channel, data):
-        pass
-
-
-class ChannelCodecPipeline(object):
-
-    def __init__(self, upstream_codecs=None, downstream_codecs=None):
-        self.upstream = upstream_codecs or tuple()
-        self.downstream = downstream_codecs or tuple()
-
-
-class EventHandler(object):
-
-    def __init__(self, io_loop=None, read_chunk_size=4096):
+    def __init__(self, event_handler=None, io_loop=None, read_chunk_size=4096):
         self._io_loop = io_loop or ioloop.IOLoop.current()
-
-        self._delegate = None
-
-        self._codecs = ChannelCodecPipeline()
-        self._send_queue = None
-
+        self._eh = event_handler or ChannelEventHandler()
         self._read_chunk_size = read_chunk_size
-        self._was_reading = False
 
         _THREAD_LOCAL.read_buffer = bytearray(self._read_chunk_size)
 
-    def set_codec_pipeline(self, codec_pipeline):
-        self._codecs = codec_pipeline
+    def set_event_handler(self, event_handler):
+        self._eh = event_handler
 
-    def on_accept(self, channel):
-        pass
+    def register(self, channel):
+        mchan = ManagedChannel(channel)
+
+        # This closure makes life a lot easier
+        def on_events(fd, events):
+            # Read and writes only check to see if the socket has been
+            # reclaimed.
+            if not mchan.closing and events & READ:
+                if mchan.listening:
+                    self.on_accept(mchan)
+                elif mchan.connecting:
+                    self.on_connect(mchan)
+                else:
+                    self.on_read(mchan)
+
+            if events & WRITE:
+                if mchan.connecting:
+                    self.on_connect(mchan)
+                else:
+                    self.on_write_ready(mchan)
+
+            if events & ERROR:
+                self._eh.on_error(mchan)
+
+            if mchan.closing and not mchan.has_queued_send():
+                self.on_close(mchan)
+
+        # Use our new closure to handle events and initial routing
+        channel.set_handler(on_events)
 
     def on_close(self, channel):
-        pass
+        # Close the actual channel
+        channel.actual_channel.close()
 
-    def on_error(self, channel):
-        pass
+        # Let the event handler know that the channel's gone
+        self._eh.on_close(channel)
+
+    def on_accept(self, channel):
+        new_channel = channel.accept()
+        self.register(new_channel)
+        self._eh.on_accept(new_channel)
 
     def on_connect(self, channel):
-        pass
+        self._eh.on_connect(channel)
+        channel.connecting = False
 
-    def on_read_ready(self, channel):
-        recv_buffer = _THREAD_LOCAL.read_buffer
-        bytes_received = channel.recv_into(
-            recv_buffer, self._read_chunk_size)
+    def on_read(self, channel):
+        read = _THREAD_LOCAL.read_buffer
+        bytes_received = channel.recv_into(read, self._read_chunk_size)
 
         if bytes_received > 0:
-            self._add_callback(self._on_read, channel,
-                recv_buffer[:bytes_received], 0)
-        else:
-            self._add_callback(self.on_close, channel)
-
-    """
-    TODO:Enhancement - pass along the codec pipeline so we don't rely on the
-    reference stored within the class. This would allow the class' version
-    of the codec pipeline to change without interrupting what is already
-    being processed.
-    """
-    def _on_read(self, channel, message, codec_idx):
-        """Process through the downstream (read) codec pipeline"""
-        read_codecs = self._codecs.downstream
-
-        # Check if another codec is awaiting processing
-        if codec_idx < len(read_codecs):
             try:
-                result = read_codecs[codec_idx].on_data(channel, message)
+                self._eh.on_read(channel, read[:bytes_received])
+            finally:
+                if channel.has_queued_send():
+                    # We disable further reads to maintain that writes
+                    # happen in a serial manner
+                    if channel.reads_enabled():
+                        channel.disable_reads()
+                        channel.was_reading = True
 
-                # Results are passed down the codec pipeline. Any resulut
-                # that is not None is assumed to imply that the result
-                # should be passed along and that codec pipeline
-                # processing may continue
-                if result is not None:
-                    self._add_callback(self._on_read, channel,
-                        result, codec_idx + 1)
-                    return
-            except Exception as ex:
-                gen_log.error('Failure on codec({}) - {}'.format(
-                    codec_idx, ex))
-
-        if channel.has_queued_send():
-            # We disable further reads to maintain that writes happen in a
-            # serial manner
-            if channel.reads_enabled():
-                channel.disable_reads()
-                self._was_reading = True
-
-            # Process the write chain
-            self._add_callback(self._process_send_queue, channel,
-                channel.release_send_queue())
+                    # Process the write chain
+                    self.schedule(
+                        callback=self._send,
+                        channel=channel,
+                        send_queue=channel.release_send_queue())
+        else:
+            # Zero bytes means client hangup
+            self.schedule(
+                callback=self.on_close,
+                channel=channel)
 
     def on_write_ready(self, channel):
         if channel.flush():
             channel.disable_writes()
 
-            if self._was_reading:
-                self._was_reading = False
+            # If reading before sending data out resume reads
+            if channel.was_reading:
+                channel.was_reading = False
                 channel.enable_reads()
 
-    def _process_send_queue(self, channel, send_queue):
+    def _send(self, channel, send_queue):
         if len(send_queue) > 0:
-            self._process_message(channel, send_queue, send_queue.popleft())
+            self._eh.on_send(channel, send_queue.popleft())
+            self.schedule(
+                callback=self._send,
+                channel=channel,
+                send_queue=send_queue)
         else:
+            # We're done processing what was in the queue so let's flush it
             channel.enable_writes()
 
-    def _process_message(self, channel, send_queue, message, codec_idx=0):
-        write_codecs = self._codecs.upstream
-
-        if codec_idx < len(write_codecs):
-            try:
-                result = write_codecs[codec_idx].on_data(channel, message)
-
-                # Results are passed down the codec pipeline
-                if result is not None:
-                    self._add_callback(self._process_message, channel,
-                        send_queue, result, codec_idx + 1)
-                    return
-            except Exception as ex:
-                gen_log.error('Failure on codec({}) - {}'.format(
-                    codec_idx, ex))
-
-        if message is not None:
-            channel.send(message)
-
-        self._add_callback(self._process_send_queue, channel, send_queue)
-
-    def _add_callback(self, callback, *args, **kwargs):
+    def schedule(self, callback, *args, **kwargs):
         """Wrap running callbacks in try/except to allow us to
         close our socket."""
 
-        # TODO: Find a better way to do this
-        channel = args[0]
+        channel = kwargs['channel']
 
         if channel is None:
             raise TypeError('Channel argument must be specified for callbacks')

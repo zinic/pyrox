@@ -3,7 +3,7 @@ import unittest
 import tornado
 import mock
 
-from pyrox.tstream.iohandling import *
+from pyrox.iohandling import *
 
 
 class TornadoTestCase(unittest.TestCase):
@@ -12,9 +12,9 @@ class TornadoTestCase(unittest.TestCase):
         self.io_loop = mock.MagicMock()
 
         # Mock the FD interests
-        self.io_loop.ERROR = 1
-        self.io_loop.READ = 2
-        self.io_loop.WRITE = 4
+        self.io_loop.ERROR = ERROR
+        self.io_loop.READ = READ
+        self.io_loop.WRITE = WRITE
 
     def tearDown(self):
         pass
@@ -177,7 +177,7 @@ class SocketChannelsTests(TornadoTestCase):
         self.socket_channel.close()
         self.assertTrue(self.socket_channel.closed())
 
-        self.io_loop.remove_handler.assert_called_with(0)
+        self.io_loop.remove_handler.assert_called()
 
     def test_getting_socket_errors(self):
         self.socket_channel.error()
@@ -188,19 +188,16 @@ class SocketChannelsTests(TornadoTestCase):
 class WhenTesting(TornadoTestCase):
 
     def test_magic(self):
-        self.io_loop = mock.MagicMock()
-        self.io_loop.ERROR = 0
-
         socket = mock.MagicMock()
         socket.fileno.return_value = 25
 
-        channel = SocketChannel(socket, self.io_loop)
+        channel = SocketChannel(socket, io_loop=self.io_loop)
 
-        event_handler = EventHandler(self.io_loop)
-        channel_handler = ChannelHandler(channel, event_handler)
+        event_router = ChannelEventRouter(io_loop=self.io_loop)
+        event_router.register(channel)
 
         self.io_loop.add_handler.assert_called_once_with(socket.fileno(),
-            channel_handler._on_events, self.io_loop.ERROR)
+            mock.ANY, self.io_loop.ERROR)
 
 
 if __name__ == '__main__':

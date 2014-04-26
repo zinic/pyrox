@@ -27,8 +27,8 @@ cdef header_to_bytes(char *name, object values, object bytes):
 
 
 cdef headers_to_bytes(object headers, object bytes):
-    bool needs_content_length = True
-    bool has_transfer_encoding = False
+    cdef bool needs_content_length = True
+    cdef bool has_transfer_encoding = False
 
     for header in headers:
         if needs_content_length and header.name == 'content-length':
