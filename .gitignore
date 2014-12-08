@@ -16,3 +16,5 @@ pyrox/util/cbuf.c
 *.DS_Store*
 nosetests.xml
 */coverage.xml
+*.komodoproject
+

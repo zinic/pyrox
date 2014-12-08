@@ -45,7 +45,7 @@ class FilterAction(object):
     def breaks_pipeline(self):
         return self.kind in _BREAKING_ACTIONS
 
-    def intercepts_request(sefl):
+    def intercepts_request(self):
         return self.is_replying()
 
     def is_consuming(self):
