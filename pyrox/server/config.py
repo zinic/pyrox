@@ -159,7 +159,7 @@ class LoggingConfiguration(ConfigurationPart):
         ::
             console = True
         """
-        return self.get('console')
+        return self.getboolean('console')
 
     @property
     def logfile(self):

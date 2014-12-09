@@ -35,9 +35,9 @@ class LoggingManager(object):
         # Configuration handling
         self._root_logger.setLevel(cfg.logging.verbosity)
 
-        if cfg.logging.logfile:
+        if cfg.logging.logfile is not None:
             self._add_handler(logging.FileHandler(cfg.logging.logfile))
-        if cfg.logging.console:
+        if cfg.logging.console is True:
             self._add_handler(logging.StreamHandler())
 
     def get_logger(self, logger_name):
