@@ -51,6 +51,9 @@ class FilterAction(object):
     def is_consuming(self):
         return self.kind == CONSUME
 
+    def is_rejecting(self):
+        return self.kind == REJECT
+
     def is_replying(self):
         return self.kind == REPLY
 
