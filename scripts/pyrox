@@ -4,16 +4,15 @@ import os
 import sys
 import argparse
 
+import pyrox.log as log
 import pyrox.server as server
+import pyrox.server.config as config
 
-from pyrox.log import get_logger
-from pyrox.filtering import HttpFilterPipeline
-
-_LOG = get_logger(__name__)
 
 args_parser = argparse.ArgumentParser(
     prog='proxy',
     description='Pyrox, the fast Python HTTP middleware server.')
+
 args_parser.add_argument(
     '-c',
     nargs='?',
@@ -22,6 +21,7 @@ args_parser.add_argument(
     help="""
         Sets the configuration file to load on startup. If unset this
         option defaults to /etc/pyrox/pyrox.conf""")
+
 args_parser.add_argument(
     '-p',
     nargs='?',
@@ -29,6 +29,7 @@ args_parser.add_argument(
     default=None,
     help=('"{}" character separated string of paths to '
           'import from when loading plugins.'.format(os.sep)))
+
 args_parser.add_argument(
     'start',
     default=False,
@@ -36,11 +37,14 @@ args_parser.add_argument(
 
 
 def start(args):
-    server.start_pyrox(cfg_location=args.cfg_location)
+    cfg = config.load_pyrox_config(args.cfg_location)
+    log.get_log_manager().configure(cfg)
+    server.start_pyrox(cfg)
 
 
 if len(sys.argv) > 1:
     args = args_parser.parse_args()
+
     if args.start:
         start(args)
 else:

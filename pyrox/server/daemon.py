@@ -58,6 +58,7 @@ def _resolve_filter_classes(cls_list):
 
         try:
             cls = getattr(module, cdef[cdef.rfind('.') + 1:])
+
             if inspect.isclass(cls):
                 filter_cls_list.append(cls)
             elif inspect.isfunction(cls):
@@ -72,6 +73,7 @@ def _resolve_filter_classes(cls_list):
         except AttributeError as ae:
             _LOG.exception(ae)
             raise ImportError('Unable to import: {}'.format(cdef))
+
     return filter_cls_list
 
 
@@ -118,6 +120,7 @@ def _build_plfactories(config):
         _resolve_filter_classes(config.pipeline.upstream))
     downstream = _build_plfactory_closure(
         _resolve_filter_classes(config.pipeline.downstream))
+
     return upstream, downstream
 
 
@@ -167,10 +170,9 @@ def start_proxy(sockets, config):
     IOLoop.current().start()
 
 
-def start_pyrox(cfg=None, cfg_location=None):
-    config = cfg
+def start_pyrox(config):
     if config is None:
-        config = load_pyrox_config(cfg_location)
+        raise ConfigurationError('No configuration object passed in')
 
     # Log some important things
     if config.routing.upstream_hosts is not None:

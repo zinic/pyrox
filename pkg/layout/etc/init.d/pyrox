@@ -19,8 +19,8 @@ PYROX_SHARE=/usr/share/pyrox
 
 NAME=pyrox
 PIDFILE=/var/run/${NAME}.pid
-DAEMON="/usr/bin/python"
-DAEMON_OPTS="${PYROX_SHARE}/bin/main.py start"
+DAEMON="pyrox"
+DAEMON_OPTS="start"
 USER=${NAME}
 APPDIR=/var/lib/${NAME}
 
