@@ -1,5 +1,3 @@
-[![Build Status](http://jenkins.projectmeniscus.org/job/Pyrox/badge/icon)](http://jenkins.projectmeniscus.org/job/Pyrox/)
-
 # [Pyrox](http://pyrox-http.org/)
 #### The fast Python HTTP middleware server
 
@@ -14,7 +12,7 @@ request rate limiting, service distribution, content negotiation and content
 transformation. These services can then be scaled horizontally separate the
 origin REST endpoint.
 
-Build ontop of the [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
+Build on top of the [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
 python library, the HTTP code inside Pyrox can scale to thousands of concurrent
 clients and proxy them to a similar number of upstream REST services.
 
