@@ -46,10 +46,9 @@ def cythonize():
     if not has_cython:
         fail_build('In order to build this project, cython is required.')
 
-    for module in read('./tools/cython-modules'):
-        if has_cython:
-            for cython_target in module_files(module, 'pyx', 'pyd'):
-                compile(cython_target)
+    for module in read('tools/cython-modules'):
+        for cython_target in module_files(module, 'pyx', 'pyd'):
+            compile(cython_target)
 
 
 def package_c():
@@ -109,8 +108,9 @@ setup(
         'Topic :: Internet',
         'Topic :: Utilities'
     ],
-    tests_require=read('./tools/test-requires'),
-    install_requires=read('./tools/pip-requires'),
+    scripts=['scripts/pyrox'],
+    tests_require=read('tools/test-requires'),
+    install_requires=read('tools/pip-requires'),
     test_suite='nose.collector',
     zip_safe=False,
     include_package_data=True,
