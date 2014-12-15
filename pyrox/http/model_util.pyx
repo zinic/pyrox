@@ -26,21 +26,9 @@ cdef header_to_bytes(char *name, object values, object bytes):
     bytes.extend(b'\r\n')
 
 
-cdef headers_to_bytes(object headers, object bytes):
-    cdef bool needs_content_length = True
-    cdef bool has_transfer_encoding = False
-
+def headers_to_bytes(headers, bytes):
     for header in headers:
-        if needs_content_length and header.name == 'content-length':
-            needs_content_length = False
-
-        if not has_transfer_encoding and header.name == 'transfer-encoding':
-            has_transfer_encoding = True
-
         header_to_bytes(header.name, header.values, bytes)
-
-    if needs_content_length and not has_transfer_encoding:
-        header_to_bytes('content-length', '0', bytes)
 
     bytes.extend(b'\r\n')
 

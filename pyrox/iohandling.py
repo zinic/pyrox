@@ -94,6 +94,9 @@ class ChannelEventHandler(object):
 
 class Channel(object):
 
+    def __init__(self):
+        self.related = None
+
     def set_handler(self, event_handler):
         raise NotImplementedError()
 
@@ -125,6 +128,8 @@ class Channel(object):
 class FileDescriptorChannel(Channel):
 
     def __init__(self, fileno, io_loop=None):
+        super(FileDescriptorChannel, self).__init__()
+
         assert fileno is not None
 
         self.fileno = fileno
@@ -237,8 +242,11 @@ class SocketChannel(FileDescriptorChannel):
     def __init__(self, sock, address=None, io_loop=None):
         super(SocketChannel, self).__init__(sock.fileno(), io_loop)
 
-        # State tracking
+        # Where are we going?
         self.address = address
+        self.remote= '{}:{}'.format(address[0], address[1])
+
+        # State tracking
         self.connecting = False
         self.listening = False
 
@@ -261,28 +269,27 @@ class SocketChannel(FileDescriptorChannel):
     @classmethod
     def Connect(cls, address, family=socket.AF_UNSPEC, io_loop=None):
         new_channel = SocketChannel(socket.socket(family), address, io_loop)
-        new_channel.connect(address)
+        new_channel.connect()
         return new_channel
 
     def accept(self):
         new_sock, addr = self._socket.accept()
         return SocketChannel(new_sock, addr, self._io_loop)
 
-    def connect(self, address):
-        self._socket.connect(address)
+    def connect(self):
         self.connecting = True
+
+        try:
+            self._socket.connect(self.address)
+        except socket.error as ex:
+            if _is_connect_error(ex):
+                self.close()
+                raise
 
     def listen(self, address, backlog=128):
         self._socket.bind(address)
         self._socket.listen(backlog)
         self.listening = True
-
-    def connect_socket(socket_channel, address):
-        try:
-            socket_channel._socket.connect(address)
-        except socket.error as ex:
-            if _is_connect_error(ex):
-                raise
 
     def has_queued_send(self):
         return self._send_idx < self._send_len
@@ -291,7 +298,17 @@ class SocketChannel(FileDescriptorChannel):
         return self._socket.recv(bufsize)
 
     def recv_into(self, buffer, nbytes=0):
-        return self._socket.recv_into(buffer, nbytes)
+        recieved = 0
+
+        try:
+            recieved = self._socket.recv_into(buffer, nbytes)
+        except IOError as ioe:
+            # These may be expected if the client closes quickly
+            pass
+        except Expcetion as ex:
+            gen_log.exception(ex)
+
+        return recieved
 
     def send(self, data):
         if self.has_queued_send():
@@ -305,6 +322,7 @@ class SocketChannel(FileDescriptorChannel):
         if self.has_queued_send():
             written = self._socket.send(self._send_data[self._send_idx:])
             self._send_idx += written
+            
         return not self.has_queued_send()
 
     def closed(self):
@@ -357,10 +375,16 @@ class ManagedChannel(object):
         return len(self._send_queue) > 0
 
     def send(self, data):
-        if self.closing:
-            raise ChannelError('Channel closing. Sends are not allowed at this time')
+        if self.closing is True:
+            raise ChannelError(
+                'Channel closing. Sends are not allowed at this time')
 
+        # Queue the data
         self._send_queue.append(data)
+
+        # Mark us ready to write if we haven't done so already
+        if not self.writes_enabled():
+            self.enable_writes()
 
     def flush(self):
         flushed = False
@@ -382,24 +406,29 @@ class ManagedChannel(object):
 
         return AttributeError('No attribute named: {}.'.format(name))
 
+    def __str__(self):
+        return 'ManagedChannel(wrapped_channel:{})'.format(
+            self.actual_channel)
+
 
 class ChannelEventRouter(object):
 
-    def __init__(self, event_handler=None, io_loop=None, read_chunk_size=4096):
+    def __init__(self, io_loop=None, read_chunk_size=4096):
         self._io_loop = io_loop or ioloop.IOLoop.current()
-        self._eh = event_handler or ChannelEventHandler()
         self._read_chunk_size = read_chunk_size
 
         _THREAD_LOCAL.read_buffer = bytearray(self._read_chunk_size)
 
     def set_event_handler(self, event_handler):
         self._eh = event_handler
+        self._eh.init(self)
 
     def register(self, channel):
         mchan = ManagedChannel(channel)
 
         # This closure makes life a lot easier
         def on_events(fd, events):
+
             # Read and writes only check to see if the socket has been
             # reclaimed.
             if not mchan.closing and events & READ:
@@ -417,7 +446,7 @@ class ChannelEventRouter(object):
                     self.on_write_ready(mchan)
 
             if events & ERROR:
-                self._eh.on_error(mchan)
+                self.on_error(mchan)
 
             if mchan.closing and not mchan.has_queued_send():
                 self.on_close(mchan)
@@ -425,42 +454,33 @@ class ChannelEventRouter(object):
         # Use our new closure to handle events and initial routing
         channel.set_handler(on_events)
 
+        # Return the new managed channel
+        return mchan
+
+    def on_error(self, channel):
+        self.schedule(self._eh.on_error, channel=channel)
+
     def on_close(self, channel):
         # Close the actual channel
         channel.actual_channel.close()
 
         # Let the event handler know that the channel's gone
-        self._eh.on_close(channel)
+        self.schedule(self._eh.on_close, channel=channel)
 
     def on_accept(self, channel):
-        new_channel = channel.accept()
-        self.register(new_channel)
-        self._eh.on_accept(new_channel)
+        new_channel = self.register(channel.accept())
+        self.schedule(self._eh.on_accept, channel=new_channel)
 
     def on_connect(self, channel):
-        self._eh.on_connect(channel)
         channel.connecting = False
+        self.schedule(self._eh.on_connect, channel=channel)
 
     def on_read(self, channel):
         read = _THREAD_LOCAL.read_buffer
         bytes_received = channel.recv_into(read, self._read_chunk_size)
 
         if bytes_received > 0:
-            try:
-                self._eh.on_read(channel, read[:bytes_received])
-            finally:
-                if channel.has_queued_send():
-                    # We disable further reads to maintain that writes
-                    # happen in a serial manner
-                    if channel.reads_enabled():
-                        channel.disable_reads()
-                        channel.was_reading = True
-
-                    # Process the write chain
-                    self.schedule(
-                        callback=self._send,
-                        channel=channel,
-                        send_queue=channel.release_send_queue())
+            self._eh.on_read(channel, read[:bytes_received])
         else:
             # Zero bytes means client hangup
             self.schedule(
@@ -469,32 +489,28 @@ class ChannelEventRouter(object):
 
     def on_write_ready(self, channel):
         if channel.flush():
+            # We're done writing for now
             channel.disable_writes()
 
-            # If reading before sending data out resume reads
-            if channel.was_reading:
-                channel.was_reading = False
-                channel.enable_reads()
-
-    def _send(self, channel, send_queue):
-        if len(send_queue) > 0:
-            self._eh.on_send(channel, send_queue.popleft())
-            self.schedule(
-                callback=self._send,
-                channel=channel,
-                send_queue=send_queue)
-        else:
-            # We're done processing what was in the queue so let's flush it
-            channel.enable_writes()
+            # What does the user program want us to do?
+            try:
+                self._eh.on_send_complete(channel)
+            finally:
+                if channel.closing:
+                    # If closing, schedule the close call
+                    self.schedule(
+                        callback=self.on_close,
+                        channel=channel)
 
     def schedule(self, callback, *args, **kwargs):
-        """Wrap running callbacks in try/except to allow us to
-        close our socket."""
-
-        channel = kwargs['channel']
+        """
+        Wrap running callbacks in try/except to allow us to gracefully
+        handle exceptions and errors that bubble up.
+        """
+        channel = kwargs.get('channel')
 
         if channel is None:
-            raise TypeError('Channel argument must be specified for callbacks')
+            raise TypeError('Channel argument must be set in kwargs')
 
         def _callback_wrapper():
             try:
