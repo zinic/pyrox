@@ -277,7 +277,9 @@ class UpstreamHandler(StreamHandler):
             self._intercepted = True
             self._response_tuple = action.payload
         else:
-            self._upstream_channel.disable_reads()
+            _, stream_handle = self._client_channel.related
+            stream_handle.resume_partner = True
+
             self._client_channel.send(self._http_msg.to_bytes())
 
     def on_body(self, bytes, length, is_chunked):
@@ -293,16 +295,17 @@ class UpstreamHandler(StreamHandler):
 
             # Hold up on the upstream side until we're done sending this chunk
             self._upstream_channel.disable_reads()
-
-            # When we write to the stream set the callback to resume
-            # reading from upstream.
             _write_to_stream(
                 self._client_channel,
                 data,
                 is_chunked or self._chunked)
 
     def on_message_complete(self, is_chunked, keep_alive):
+        # We're done so don't resume reads
         self._upstream_channel.disable_reads()
+
+        _, stream_handle = self._client_channel.related
+        stream_handle.resume_partner = False
 
         if self._intercepted:
             # Serialize our message to them
@@ -312,10 +315,10 @@ class UpstreamHandler(StreamHandler):
             self._client_channel.send(_CHUNK_CLOSE)
 
         if keep_alive:
-            self._http_msg = HttpResponse()
+            #self._http_msg = HttpResponse()
             self._client_channel.enable_reads()
-        else:
-            self._upstream_channel.close()
+        #else:
+        self._upstream_channel.close()
 
 
 class StreamHandle(object):
@@ -323,6 +326,22 @@ class StreamHandle(object):
     def __init__(self, parser, partner_channel=None):
         self.partner_channel = partner_channel
         self.parser = parser
+        self.resume_partner = False
+
+    def partner_connected(self):
+        return self.partner_channel is not None
+
+    def destroy(self):
+        self.parser.destroy()
+
+
+def kill_channel(channel):
+    # Clean up
+    stream_type, stream_handle = channel.related
+    stream_handle.destroy()
+
+    if stream_type is _DOWNSTREAM and stream_handle.partner_connected():
+        stream_handle.partner_channel.close()
 
 
 class ConnectionDriver(ioh.ChannelEventHandler):
@@ -349,7 +368,6 @@ class ConnectionDriver(ioh.ChannelEventHandler):
         # Are we going somewhere?
         if upstream_target is None:
             client_channel.send(_UPSTREAM_UNAVAILABLE.to_bytes())
-            client_channel.enable_writes()
             return
 
         # Update the request to proxy upstream and store it
@@ -359,10 +377,9 @@ class ConnectionDriver(ioh.ChannelEventHandler):
         try:
             # Connect upstream and register the socket
             upstream_channel = self._ce_router.register(
-                ioh.SocketChannel.Connect((us_host, us_port), socket.AF_INET))
+                ioh.SocketChannel.Create((us_host, us_port), socket.AF_INET))
 
-            # Enable writing
-            upstream_channel.enable_writes()
+            upstream_channel.connect()
 
             # Create a response parser instance
             response_parser = ResponseParser(
@@ -397,10 +414,10 @@ class ConnectionDriver(ioh.ChannelEventHandler):
         channel.related = (_DOWNSTREAM, stream_handle)
 
     def on_close(self, channel):
-        channel.related[1].parser.destroy()
+        kill_channel(channel)
 
     def on_error(self, channel):
-        channel.related[1].parser.destroy()
+        kill_channel(channel)
 
     def on_connect(self, channel):
         # Trim related items since we don't need the request anymore
@@ -416,11 +433,16 @@ class ConnectionDriver(ioh.ChannelEventHandler):
         channel.send(request.to_bytes())
 
     def on_read(self, channel, data):
-        channel.related[1].parser.execute(data)
+        _, stream_handle = channel.related
+        stream_handle.parser.execute(data)
 
     def on_send_complete(self, channel):
-        if channel.related[0] is _DOWNSTREAM:
-            channel.related[1].partner_channel.enable_reads()
+        _, stream_handle = channel.related
+
+        if stream_handle.resume_partner is True:
+            # Writing during streaming should provoke us to read more from the
+            # partner stream
+            stream_handle.partner_channel.enable_reads()
 
 
 class SocketChannelServer(object):

@@ -50,7 +50,8 @@ _EPOLLET = (1 << 31)
 NONE = 0
 READ = _EPOLLIN
 WRITE = _EPOLLOUT
-ERROR = _EPOLLERR | _EPOLLHUP
+CLOSE = _EPOLLHUP
+ERROR = _EPOLLERR
 
 
 def _is_connect_error(ex):
@@ -262,14 +263,19 @@ class SocketChannel(FileDescriptorChannel):
 
     @classmethod
     def Listen(cls, address, family=socket.AF_UNSPEC, backlog=128, io_loop=None):
-        new_channel = SocketChannel(socket.socket(family), address, io_loop)
-        new_channel.listen(address)
+        new_channel = SocketChannel.Create(address, family, io_loop)
+        new_channel.listen()
         return new_channel
 
     @classmethod
     def Connect(cls, address, family=socket.AF_UNSPEC, io_loop=None):
-        new_channel = SocketChannel(socket.socket(family), address, io_loop)
+        new_channel = SocketChannel.Create(address, family, io_loop)
         new_channel.connect()
+        return new_channel
+
+    @classmethod
+    def Create(cls, address, family=socket.AF_UNSPEC, io_loop=None):
+        new_channel = SocketChannel(socket.socket(family), address, io_loop)
         return new_channel
 
     def accept(self):
@@ -283,11 +289,13 @@ class SocketChannel(FileDescriptorChannel):
             self._socket.connect(self.address)
         except socket.error as ex:
             if _is_connect_error(ex):
-                self.close()
+                self._socket = None
                 raise
 
-    def listen(self, address, backlog=128):
-        self._socket.bind(address)
+        self.enable_writes()
+
+    def listen(self, backlog=128):
+        self._socket.bind(self.address)
         self._socket.listen(backlog)
         self.listening = True
 
@@ -302,10 +310,7 @@ class SocketChannel(FileDescriptorChannel):
 
         try:
             recieved = self._socket.recv_into(buffer, nbytes)
-        except IOError as ioe:
-            # These may be expected if the client closes quickly
-            pass
-        except Expcetion as ex:
+        except Exception as ex:
             gen_log.exception(ex)
 
         return recieved
@@ -322,19 +327,18 @@ class SocketChannel(FileDescriptorChannel):
         if self.has_queued_send():
             written = self._socket.send(self._send_data[self._send_idx:])
             self._send_idx += written
-            
+
         return not self.has_queued_send()
 
     def closed(self):
         return self._socket is None
 
     def close(self):
-        if not self.closed():
-            self._socket.close()
-            self._socket = None
+        if self.closed():
+            raise ChannelError('Channel already closed!')
 
-        if self._has_handler:
-            self.remove_handler()
+        self._socket.close()
+        self._socket = None
 
     def error(self):
         self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
@@ -348,23 +352,31 @@ class ManagedChannel(object):
 
     def __init__(self, channel):
         self.closing = False
-        self.was_reading = False
+        self.destroyed = False
 
-        self.actual_channel = channel
+        self._actual_channel = channel
         self._send_queue = collections.deque()
 
     def close(self):
-        # Try not to close twice
-        if not self.closing and not self.closed():
+        # Don't attempt to close twice
+        if not self.closing:
             self.closing = True
-            self.disable_reads()
 
-            if self.has_queued_send():
-                # We need to flush everything before closing
+            # Disable reads
+            if self.reads_enabled():
+                self.disable_reads()
+
+            # Enable writes
+            if not self.writes_enabled():
                 self.enable_writes()
-            else:
-                # If there's nothing left to flush close ASAP
-                self.actual_channel.close()
+
+    def destroy(self):
+        if not self.destroyed:
+            self.destroyed = True
+
+            # Remove the handle and kill the channel
+            self.remove_handler()
+            self._actual_channel.close()
 
     def release_send_queue(self):
         queue_ref = self._send_queue
@@ -389,9 +401,9 @@ class ManagedChannel(object):
     def flush(self):
         flushed = False
 
-        if self.actual_channel.flush():
+        if self._actual_channel.flush():
             if len(self._send_queue) > 0:
-                self.actual_channel.send(self._send_queue.popleft())
+                self._actual_channel.send(self._send_queue.popleft())
             else:
                 flushed = True
         return flushed
@@ -401,14 +413,14 @@ class ManagedChannel(object):
             return self.flush
         elif name == 'send':
             return self.send
-        elif hasattr(self.actual_channel, name):
-            return getattr(self.actual_channel, name)
+        elif hasattr(self._actual_channel, name):
+            return getattr(self._actual_channel, name)
 
         return AttributeError('No attribute named: {}.'.format(name))
 
     def __str__(self):
         return 'ManagedChannel(wrapped_channel:{})'.format(
-            self.actual_channel)
+            self._actual_channel)
 
 
 class ChannelEventRouter(object):
@@ -428,14 +440,10 @@ class ChannelEventRouter(object):
 
         # This closure makes life a lot easier
         def on_events(fd, events):
-
-            # Read and writes only check to see if the socket has been
-            # reclaimed.
+            # Reads check to see if the socket has been reclaimed.
             if not mchan.closing and events & READ:
                 if mchan.listening:
                     self.on_accept(mchan)
-                elif mchan.connecting:
-                    self.on_connect(mchan)
                 else:
                     self.on_read(mchan)
 
@@ -448,8 +456,6 @@ class ChannelEventRouter(object):
             if events & ERROR:
                 self.on_error(mchan)
 
-            if mchan.closing and not mchan.has_queued_send():
-                self.on_close(mchan)
 
         # Use our new closure to handle events and initial routing
         channel.set_handler(on_events)
@@ -461,8 +467,8 @@ class ChannelEventRouter(object):
         self.schedule(self._eh.on_error, channel=channel)
 
     def on_close(self, channel):
-        # Close the actual channel
-        channel.actual_channel.close()
+        # Remove the associated handle now that it's dead
+        channel.destroy()
 
         # Let the event handler know that the channel's gone
         self.schedule(self._eh.on_close, channel=channel)
@@ -483,24 +489,19 @@ class ChannelEventRouter(object):
             self._eh.on_read(channel, read[:bytes_received])
         else:
             # Zero bytes means client hangup
-            self.schedule(
-                callback=self.on_close,
-                channel=channel)
+            self.on_close(channel)
 
     def on_write_ready(self, channel):
         if channel.flush():
-            # We're done writing for now
+            # We're done writing for now if flush returns true
             channel.disable_writes()
 
-            # What does the user program want us to do?
-            try:
-                self._eh.on_send_complete(channel)
-            finally:
-                if channel.closing:
-                    # If closing, schedule the close call
-                    self.schedule(
-                        callback=self.on_close,
-                        channel=channel)
+            if not channel.closing:
+                # What does the user program want us to do?
+                self.schedule(self._eh.on_send_complete, channel=channel)
+            else:
+                # Complete the close
+                self.on_close(channel)
 
     def schedule(self, callback, *args, **kwargs):
         """

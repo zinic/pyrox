@@ -171,9 +171,7 @@ cdef class HttpEventParser(object):
 
             retval = http_parser_exec(
                 self._parser, &self._settings, data, length)
-            if retval:
-                raise Exception('Failed with errno: {}'.format(retval))
         except Exception as ex:
             raise
 
-        return 0
+        return retval
