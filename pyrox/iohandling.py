@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function,\
     with_statement
 
 import copy
+import traceback
 import threading
 import collections
 import errno
@@ -123,6 +124,33 @@ class Channel(object):
         raise NotImplementedError()
 
     def error(self):
+        raise NotImplementedError()
+
+    def errors_enabled(self):
+        raise NotImplementedError()
+
+    def reads_enabled(self):
+        raise NotImplementedError()
+
+    def writes_enabled(self):
+        raise NotImplementedError()
+
+    def disable_errors(self):
+        raise NotImplementedError()
+
+    def disable_reads(self):
+        raise NotImplementedError()
+
+    def disable_writes(self):
+        raise NotImplementedError()
+
+    def enable_errors(self):
+        raise NotImplementedError()
+
+    def enable_reads(self):
+        raise NotImplementedError()
+
+    def enable_writes(self):
         raise NotImplementedError()
 
 
@@ -341,7 +369,7 @@ class SocketChannel(FileDescriptorChannel):
         self._socket = None
 
     def error(self):
-        self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+        return self._socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
 
     def __str__(self):
         return '(fd:{}) SocketChannel(addr:{})'.format(
@@ -350,11 +378,14 @@ class SocketChannel(FileDescriptorChannel):
 
 class ManagedChannel(object):
 
+    slots = ('flush', 'send', 'destroy', 'close', 'closing', 'destroyed',
+             '__str__', '_channel', '_send_queue')
+
     def __init__(self, channel):
         self.closing = False
         self.destroyed = False
 
-        self._actual_channel = channel
+        self._channel = channel
         self._send_queue = collections.deque()
 
     def close(self):
@@ -363,28 +394,20 @@ class ManagedChannel(object):
             self.closing = True
 
             # Disable reads
-            if self.reads_enabled():
-                self.disable_reads()
+            if self._channel.reads_enabled():
+                self._channel.disable_reads()
 
             # Enable writes
-            if not self.writes_enabled():
-                self.enable_writes()
+            if not self._channel.writes_enabled():
+                self._channel.enable_writes()
 
     def destroy(self):
         if not self.destroyed:
             self.destroyed = True
 
             # Remove the handle and kill the channel
-            self.remove_handler()
-            self._actual_channel.close()
-
-    def release_send_queue(self):
-        queue_ref = self._send_queue
-        self._send_queue = collections.deque()
-        return queue_ref
-
-    def has_queued_send(self):
-        return len(self._send_queue) > 0
+            self._channel.remove_handler()
+            self._channel.close()
 
     def send(self, data):
         if self.closing is True:
@@ -392,35 +415,37 @@ class ManagedChannel(object):
                 'Channel closing. Sends are not allowed at this time')
 
         # Queue the data
-        self._send_queue.append(data)
+        if not self.has_queued_send():
+            self._channel.send(data)
+        else:
+            self._send_queue.append(data)
 
         # Mark us ready to write if we haven't done so already
-        if not self.writes_enabled():
-            self.enable_writes()
+        if not self._channel.writes_enabled():
+            self._channel.enable_writes()
 
     def flush(self):
         flushed = False
 
-        if self._actual_channel.flush():
+        if self._channel.flush():
             if len(self._send_queue) > 0:
-                self._actual_channel.send(self._send_queue.popleft())
+                self._channel.send(self._send_queue.popleft())
             else:
                 flushed = True
+
+                if self._channel.writes_enabled():
+                    self._channel.disable_writes()
+
         return flushed
 
     def __getattr__(self, name):
-        if name == 'flush':
-            return self.flush
-        elif name == 'send':
-            return self.send
-        elif hasattr(self._actual_channel, name):
-            return getattr(self._actual_channel, name)
-
-        return AttributeError('No attribute named: {}.'.format(name))
+        if name in self.slots:
+            return getattr(self, name)
+        return getattr(self._channel, name)
 
     def __str__(self):
         return 'ManagedChannel(wrapped_channel:{})'.format(
-            self._actual_channel)
+            self._channel)
 
 
 class ChannelEventRouter(object):
@@ -441,7 +466,7 @@ class ChannelEventRouter(object):
         # This closure makes life a lot easier
         def on_events(fd, events):
             # Reads check to see if the socket has been reclaimed.
-            if not mchan.closing and events & READ:
+            if events & READ:
                 if mchan.listening:
                     self.on_accept(mchan)
                 else:
