@@ -1,23 +1,28 @@
+import copy
+import threading
+import collections
+import errno
 import socket
+import ssl
+import traceback
 
-import tornado
-import tornado.ioloop
-import tornado.process
+import pyrox.iohandling as ioh
 
-from .routing import RoundRobinRouter, PROTOCOL_HTTP, PROTOCOL_HTTPS
+from tornado import ioloop
+from tornado.netutil import bind_sockets
 
-from pyrox.tstream.iostream import (SSLSocketIOHandler, SocketIOHandler,
-                                    StreamClosedError)
-from pyrox.tstream.tcpserver import TCPServer
-
-from pyrox.log import get_logger
 from pyrox.about import VERSION
+from pyrox.log import get_logger
+from pyrox.filtering import HttpFilterPipeline
 from pyrox.http import (HttpRequest, HttpResponse, RequestParser,
                         ResponseParser, ParserDelegate)
-import traceback
+
 
 _LOG = get_logger(__name__)
 
+_CONTENT_LENGTH = 'content-length'
+_TRANSFER_ENCODING = 'transfer-encoding'
+_CHUNKED_ENCODING = 'chunked'
 
 """
 String representing a 0 length HTTP chunked encoding chunk.
@@ -45,7 +50,7 @@ _UPSTREAM_UNAVAILABLE.header('Server').values.append('pyrox/{}'.format(VERSION))
 _UPSTREAM_UNAVAILABLE.header('Content-Length').values.append('0')
 
 
-def _write_to_stream(stream, data, is_chunked, callback=None):
+def _write_to_stream(stream, data, is_chunked):
     if is_chunked:
         # Format and write this chunk
         chunk = bytearray()
@@ -53,9 +58,9 @@ def _write_to_stream(stream, data, is_chunked, callback=None):
         chunk.extend('\r\n')
         chunk.extend(data)
         chunk.extend('\r\n')
-        stream.write(chunk, callback)
+        stream.send(chunk)
     else:
-        stream.write(data, callback)
+        stream.send(data)
 
 
 class AccumulationStream(object):
@@ -63,14 +68,14 @@ class AccumulationStream(object):
     def __init__(self):
         self.bytes = bytearray()
 
-    def write(self, data):
+    def send(self, data):
         self.bytes.extend(data)
 
     def size(self):
         return len(self.bytes)
 
 
-class ProxyHandler(ParserDelegate):
+class StreamHandler(ParserDelegate):
     """
     Common class for the stream handlers. This parent class manages the
     following:
@@ -78,9 +83,12 @@ class ProxyHandler(ParserDelegate):
     - Handling of header field names.
     - Tracking rejection of message sessions.
     """
-    def __init__(self, filter_pl, http_msg):
-        self._filter_pl = filter_pl
+    def __init__(self, filters, http_msg):
+        # Refs to our filter pipeline and the message we're building
+        self._filters = filters
         self._http_msg = http_msg
+
+        # State management
         self._chunked = False
         self._last_header_field = None
         self._intercepted = False
@@ -94,29 +102,27 @@ class ProxyHandler(ParserDelegate):
     def on_header_value(self, value):
         header = self._http_msg.header(self._last_header_field)
         header.values.append(value)
-        self._last_header_field = None
 
 
-class DownstreamHandler(ProxyHandler):
-    """
-    This proxy handler manages data coming from downstream of the proxy.
-    This data comes from the client initiating the request against the
-    proxy.
-    """
+class DownstreamHandler(StreamHandler):
 
-    def __init__(self, downstream, filter_pl, connect_upstream):
-        super(DownstreamHandler, self).__init__(filter_pl, HttpRequest())
-        self._downstream = downstream
-        self._upstream = None
-        self._preread_body = None
+    def __init__(self, filters, connect_upstream):
+        super(DownstreamHandler, self).__init__(filters, HttpRequest())
+
+        self.stream_handle = None
+
         self._connect_upstream = connect_upstream
+        self._message_complete = False
+        self._preread_body = bytearray()
 
     def _store_chunk(self, body_fragment):
-        if not self._preread_body:
-            self._preread_body = bytearray()
         self._preread_body.extend(body_fragment)
 
     def on_req_method(self, method):
+        # Req method means a new message
+        self._message_complete = False
+
+        # Store the method
         self._http_msg.method = method
 
     def on_req_path(self, url):
@@ -124,358 +130,487 @@ class DownstreamHandler(ProxyHandler):
 
     def on_headers_complete(self):
         # Execute against the pipeline
-        action = self._filter_pl.on_request_head(self._http_msg)
+        action = self._filters.on_request_head(self._http_msg)
 
         # If we are intercepting the request body do some negotiation
-        if self._filter_pl.intercepts_req_body():
+        if self._filters.intercepts_req_body():
             self._chunked = True
 
             # If there's a content length, negotiate the tansfer encoding
-            if self._http_msg.get_header('content-length'):
-                self._http_msg.remove_header('content-length')
-                self._http_msg.remove_header('transfer-encoding')
+            if self._http_msg.get_header(_CONTENT_LENGTH):
+                self._http_msg.remove_header(_CONTENT_LENGTH)
+                self._http_msg.remove_header(_TRANSFER_ENCODING)
 
-                self._http_msg.header('transfer-encoding').values.append('chunked')
+                self._http_msg.header(_TRANSFER_ENCODING).values.append(
+                    _CHUNKED_ENCODING)
 
-        # If we're rejecting then we're not going to connect to upstream
         if action.intercepts_request():
+            # If we're replying right away then we're not going to connect to
+            # upstream so there's no reason to stop reading from the client
             self._intercepted = True
             self._response_tuple = action.payload
         else:
-            # Hold up on the client side until we're done negotiating
-            # connections.
-            self._downstream.handle.disable_reading()
+            # Plug future reads for now
+            self.stream_handle.plug_reads()
 
-            # We're routing to upstream; we need to know where to go
+            # Initiate upstream connection management
             if action.is_routing():
-                self._connect_upstream(self._http_msg, action.payload)
+                self._connect_upstream(
+                    self.stream_handle,
+                    self.on_upstream_connect,
+                    action.payload)
             else:
-                self._connect_upstream(self._http_msg)
+                self._connect_upstream(
+                    self.stream_handle,
+                    self.on_upstream_connect)
 
     def on_body(self, bytes, length, is_chunked):
+        # Rejections simply discard the body
+        if self._intercepted:
+            return
+
+        # Plug our reads
+        self.stream_handle.plug_reads()
+
+        # Remember if we're chunked or not
         self._chunked = is_chunked
 
-        if self._downstream.reading():
-            # Hold up on the client side until we're done with this chunk
-            self._downstream.handle.disable_reading()
+        accumulator = AccumulationStream()
+        data = bytes
 
-        # Rejections simply discard the body
-        if not self._intercepted:
-            accumulator = AccumulationStream()
-            data = bytes
+        self._filter_pl.on_request_body(data, accumulator)
 
-            self._filter_pl.on_request_body(data, accumulator)
+        if accumulator.size() > 0:
+            data = accumulator.bytes
 
-            if accumulator.size() > 0:
-                data = accumulator.bytes
+        if self.stream_handle.partner_connected():
+            _write_to_stream(self.stream_handle.partner, data, is_chunked)
 
-            if self._upstream:
-                # When we write to the stream set the callback to resume
-                # reading from downstream.
-                _write_to_stream(self._upstream, data, is_chunked,
-                                 self._downstream.handle.resume_reading)
-            else:
-                # If we're not connected upstream, store the fragment
-                # for later
-                self._store_chunk(data)
+            # When we write to the stream set the callback to resume
+            # reading from downstream.
+            self.stream_handle.resume_reads()
+        else:
+            # If we're not connected upstream, store the fragment
+            # for later
+            self._store_chunk(data)
 
     def on_upstream_connect(self, upstream):
-        self._upstream = upstream
+        # Set the partner channel
+        join_handles(self.stream_handle, upstream)
 
-        if self._preread_body and len(self._preread_body) > 0:
-            _write_to_stream(self._upstream, self._preread_body,
-                             self._chunked,
-                             self._downstream.handle.resume_reading)
+        # Send the request head
+        upstream.send(self._http_msg.to_bytes())
+
+        # Clean up our message object
+        # TODO: Find a way to optimize this without object creatoin
+        self._http_msg = HttpRequest()
+
+        # Queue up any body fragments we read that fit in our buffer
+        if self._preread_body is not None and len(self._preread_body) > 0:
+            _write_to_stream(upstream, self._preread_body, self._chunked)
             self._preread_body = None
+
+        if self._message_complete is True:
+            # If the message is complete, we want to resume reads after the
+            # head and any stored body content are sent
+            upstream.resume_reads()
 
     def on_message_complete(self, is_chunked, keep_alive):
         # Enable reading when we're ready later
-        self._downstream.handle.disable_reading()
+        self.stream_handle.plug_reads()
 
-        if keep_alive:
-            self._http_msg = HttpRequest()
+        # Mark that we're complete
+        self._message_complete = True
 
         if self._intercepted:
-            self._downstream.write(self._response_tuple[0].to_bytes())
+            self.stream_handle.send(self._response_tuple[0].to_bytes())
+
+            if keep_alive:
+                # Resume client reads if this is a keep-alive request
+                self.stream_handle.resume_reads()
+
         elif is_chunked or self._chunked:
-            # Finish the last chunk.
-            self._upstream.write(_CHUNK_CLOSE)
+            if self.stream_handle.partner_connected():
+                # Send the last chunk
+                self.stream_handle.partner_channel.send(_CHUNK_CLOSE)
+
+                # Enable reads to wait for the upstream response
+                self.stream_handle.partner.resume_reads()
+            else:
+                # If we're not connected upstream, store the fragment
+                self._store_chunk(_CHUNK_CLOSE)
+        elif self.stream_handle.partner_connected():
+            # Enable reads right away if we're done writing and we're already
+            # connected with upstream
+            self.stream_handle.partner.resume_reads()
 
 
-class UpstreamHandler(ProxyHandler):
+class UpstreamHandler(StreamHandler):
     """
     This proxy handler manages data coming from upstream of the proxy. This
     data usually comes from the origin service or it may come from another
     proxy.
     """
 
-    def __init__(self, downstream, upstream, filter_pl):
-        super(UpstreamHandler, self).__init__(filter_pl, HttpResponse())
-        self._downstream = downstream
-        self._upstream = upstream
+    def __init__(self, client_handle, filters):
+        super(UpstreamHandler, self).__init__(filters, HttpResponse())
+        self._client_handle = client_handle
+        self.stream_handle = None
 
     def on_status(self, status_code):
         self._http_msg.status = str(status_code)
 
     def on_headers_complete(self):
-        action = self._filter_pl.on_response_head(self._http_msg)
+        # Hold up on the upstream side until we're done sending this chunk
+        self.stream_handle.plug_reads()
+
+        # Execute against the pipeline
+        action = self._filters.on_response_head(self._http_msg)
 
         # If we are intercepting the response body do some negotiation
-        if self._filter_pl.intercepts_resp_body():
+        if self._filters.intercepts_resp_body():
 
             # If there's a content length, negotiate the tansfer encoding
-            if self._http_msg.get_header('content-length'):
+            if self._http_msg.get_header(_CONTENT_LENGTH):
                 self._chunked = True
-                self._http_msg.remove_header('content-length')
-                self._http_msg.remove_header('transfer-encoding')
+                self._http_msg.remove_header(_CONTENT_LENGTH)
+                self._http_msg.remove_header(_TRANSFER_ENCODING)
 
-                self._http_msg.header('transfer-encoding').values.append('chunked')
+                self._http_msg.header(_TRANSFER_ENCODING).values.append(_CHUNKED_ENCODING)
 
-        if action.is_rejecting():
+        if action.is_replying():
+            # We're taking over the response ourselves
             self._intercepted = True
             self._response_tuple = action.payload
+
         else:
-            self._downstream.write(self._http_msg.to_bytes())
+            # Stream the response object
+            self._client_handle.send(self._http_msg.to_bytes())
+
+            # If we're streaming a response downstream , we need to make sure
+            # that we resume our reads from upstream
+            self._client_handle.partner.resume_reads()
 
     def on_body(self, bytes, length, is_chunked):
         # Rejections simply discard the body
-        if not self._intercepted:
-            accumulator = AccumulationStream()
-            data = bytes
+        if self._intercepted:
+            return
 
-            self._filter_pl.on_response_body(data, accumulator)
+        # Hold up on the upstream side until we're done sending this chunk
+        self.stream_handle.plug_reads()
 
-            if accumulator.size() > 0:
-                data = accumulator.bytes
+        accumulator = AccumulationStream()
+        data = bytes
 
-            # Hold up on the upstream side until we're done sending this chunk
-            self._upstream.handle.disable_reading()
+        self._filters.on_response_body(data, accumulator.bytes)
 
-            # When we write to the stream set the callback to resume
-            # reading from upstream.
-            _write_to_stream(
-                self._downstream,
-                data,
-                is_chunked or self._chunked,
-                self._upstream.handle.resume_reading)
+        if accumulator.size() > 0:
+            data = accumulator.bytes
+
+        # Write the chunk
+        _write_to_stream(
+            self._client_handle,
+            data,
+            is_chunked or self._chunked)
+
+        # Resume reads when the chunk is done
+        self.stream_handle.resume_reads()
 
     def on_message_complete(self, is_chunked, keep_alive):
-        callback = self._upstream.close
-        self._upstream.handle.disable_reading()
-
-        if keep_alive:
-            self._http_msg = HttpResponse()
-            callback = self._downstream.handle.resume_reading
+        # Hold up on the upstream side from further reads
+        self._client_handle.partner.plug_reads()
 
         if self._intercepted:
             # Serialize our message to them
-            self._downstream.write(self._http_msg.to_bytes(), callback)
+            self._client_handle.send(self._http_msg.to_bytes())
         elif is_chunked or self._chunked:
             # Finish the last chunk.
-            self._downstream.write(_CHUNK_CLOSE, callback)
-        else:
-            callback()
+            self._client_handle.send(_CHUNK_CLOSE)
 
+        if keep_alive:
+            self._http_msg = HttpResponse()
+
+            # If we're told to keep this connection alive then we can expect
+            # data from the client
+            self._client_handle.resume_reads()
+
+
+def join_handles(downstream_handle, upstream_handle):
+    downstream_handle._partner_channel = upstream_handle._origin_channel
+    upstream_handle._partner_channel = downstream_handle._origin_channel
+
+
+class StreamHandle(object):
+
+    def __init__(self, origin_channel, parser, partner_channel=None):
+        self._partner_channel = partner_channel
+        self._origin_channel = origin_channel
+        self.parser = parser
+        self.route = None
+
+        # State management
+        self._enable_reads = False
+
+    def partner_connected(self):
+        return self._partner_channel is not None
+
+    @property
+    def channel(self):
+        return self._origin_channel
+
+    @property
+    def partner(self):
+        return self._partner_channel.related if self.partner_connected() else None
+
+    def plug_reads(self):
+        self._enable_reads = False
+
+        if self._origin_channel.reads_enabled():
+            self._origin_channel.disable_reads()
+
+    def resume_reads(self):
+        self._enable_reads = True
+
+    def send(self, data):
+        self._origin_channel.send(data)
+
+    def destroy(self):
+        # Deref our partner
+        self._partner_channel = None
+
+        # Free the parser
+        self.parser.destroy()
+
+    def _update(self):
+        try:
+            if self._enable_reads:
+                self._enable_reads = False
+
+                if not self._origin_channel.reads_enabled():
+                    self._origin_channel.enable_reads()
+        except Expcetion as ex:
+            _LOG.error('Exception on updating fileno: {}'.format(
+                self._origin_channel.fileno))
+
+    def update(self):
+        # Update ourselves first
+        self._update()
+
+        # If we have a partner that needs state changes, let's execute them
+        # as well
+        if self.partner_connected():
+            self.partner._update()
+
+    def is_upstream(self):
+        raise NotImplementedError()
+
+
+class UpstreamHandle(StreamHandle):
+
+    def is_upstream(self):
+        return True
+
+
+class DownstreamHandle(StreamHandle):
+
+    def is_upstream(self):
+        return False
+
+
+def kill_channel(channel, connection_tracker):
+    # Grab this channel's handle
+    handle = channel.related
+
+    # Is this a downstream (client) connection? If so, does it have an active
+    # upstream connection we might be able to reuse?
+    if not handle.is_upstream() and handle.partner_connected():
+        # Check in the channel for reuse
+        connection_tracker.check_in(handle.partner)
+    else:
+        # Retrie the upstream channel if we no longer need it
+        connection_tracker.retire(handle)
+
+    # Clean up
+    handle.destroy()
 
 class ConnectionTracker(object):
 
-    def __init__(self, on_stream_live, on_target_closed, on_target_error):
-        self._streams = dict()
-        self._target_in_use = None
-        self._on_stream_live = on_stream_live
-        self._on_target_closed = on_target_closed
-        self._on_target_error = on_target_error
+    def __init__(self, ce_router, dest_router, us_filters_factory):
+        self._channels = dict()
+        self._ce_router = ce_router
+        self._dest_router = dest_router
+        self._us_filters_factory = us_filters_factory
 
     def destroy(self):
-        for stream in self._streams.values():
-            if not stream.closed():
-                stream.close()
+        for channels in self._channels.values():
+            for channel in channels:
+                if not channel.closed():
+                    channel.close()
 
-    def connect(self, target):
-        self._target_in_use = target
-        live_stream = self._streams.get(target)
+    def retire(self, handle):
+        # Grab the channel ref
+        channel = handle.channel
 
-        if live_stream:
-            # Make the cb ourselves since the socket's already connected
-            self._on_stream_live(live_stream)
+        _LOG.info('Retiring: {}'.format(channel.fileno))
+
+        # Look up the current channels that have been kept alive
+        upstream_channels = self._get(handle.route)
+
+        for idx in range(0, len(upstream_channels)):
+            if upstream_channels[idx].fileno == channel.fileno:
+                del upstream_channels[idx]
+                break
+
+    def check_in(self, handle):
+        # Grab the channel ref
+        channel = handle.channel
+
+        _LOG.info('Checking in: {}'.format(channel.fileno))
+
+        # Look up the current channels that have been kept alive
+        upstream_channels = self._get(handle.route)
+
+        # TODO: Make the max number of upstream connections held open
+        # configurable
+        if len(upstream_channels) > 5:
+            # Close right away if we don't need to keep this channel around
+            channel.close()
         else:
-            self._new_connection(target)
+            # We enable reads in case upstream decides to close on us
+            channel.enable_reads()
 
-    def _new_connection(self, target):
-        host, port, protocol = target
+            # Make this channel available for reuse
+            upstream_channels.append(channel)
 
-        # Set up our upstream socket
-        us_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-
-        # Create and bind the IO Handler based on selected protocol
-        if protocol == PROTOCOL_HTTP:
-            live_stream = SocketIOHandler(us_sock)
-        elif protocol == PROTOCOL_HTTPS:
-            live_stream = SSLSocketIOHandler(us_sock)
-        else:
-            raise Exception('Unknown protocol: {}.'.format(protocol))
-
-        # Store the stream reference for later use
-        self._streams[target] = live_stream
-
-        # Build and set the on_close callback
-        def on_close():
-            # Disable error cb on close
-            live_stream.on_error(None)
-
-            del self._streams[target]
-            if self._target_in_use == target:
-                self.destroy()
-                self._on_target_closed()
-        live_stream.on_close(on_close)
-
-        # Build and set the on_error callback
-        def on_error(error):
-            # Dsiable close cb on error
-            live_stream.on_close(None)
-
-            if self._target_in_use == target:
-                del self._streams[target]
-                if self._target_in_use == target:
-                    self.destroy()
-                    self._on_target_error(error)
-        live_stream.on_error(on_error)
-
-        # Build and set the on_connect callback and then connect
-        def on_connect():
-            self._on_stream_live(live_stream)
-        live_stream.connect((host, port), on_connect)
-
-
-class ProxyConnection(object):
-    """
-    A proxy connection manages the lifecycle of the sockets opened during a
-    proxied client request against Pyrox.
-    """
-    def __init__(self, us_filter_pl, ds_filter_pl, downstream, router):
-        self._ds_filter_pl = ds_filter_pl
-        self._us_filter_pl = us_filter_pl
-        self._router = router
-        self._upstream_parser = None
-        self._upstream_tracker = ConnectionTracker(
-            self._on_upstream_live,
-            self._on_upstream_close,
-            self._on_upstream_error)
-
-        # Setup all of the wiring for downstream
-        self._downstream = downstream
-        self._downstream_handler = DownstreamHandler(
-            self._downstream,
-            self._ds_filter_pl,
-            self._connect_upstream)
-        self._downstream_parser = RequestParser(self._downstream_handler)
-        self._downstream.on_close(self._on_downstream_close)
-        self._downstream.read(self._on_downstream_read)
-
-    def _connect_upstream(self, request, route=None):
+    def connect(self, client_channel, on_connect_cb, route=None):
+        # This does some type checking for routes passed up via filter
         if route is not None:
-            # This does some type checking for routes passed up via filter
-            self._router.set_next(route)
-        upstream_target = self._router.get_next()
+            self._dest_router.set_next(route)
+
+        # Where is this request going?
+        upstream_target = self._dest_router.get_next()
 
         if upstream_target is None:
-            self._downstream.write(_UPSTREAM_UNAVAILABLE.to_bytes(),
-                self._downstream.handle.resume_reading)
+            client_channel.send(_UPSTREAM_UNAVAILABLE.to_bytes())
             return
 
-        # Hold downstream reads
-        self._hold_downstream = True
+        # Lets see if we can get a live channel
+        upstream_channels = self._get(upstream_target)
+        already_connected = False
+        upstream_channel = None
 
-        # Update the request to proxy upstream and store it
-        request.replace_header('host').values.append(
-            '{}:{}'.format(upstream_target[0], upstream_target[1]))
-        self._request = request
+        if len(upstream_channels) > 0:
+            upstream_channel = upstream_channels.pop()
+            already_connected = True
+        else:
+            upstream_channel = self._open(upstream_target)
+
+        # Create the handler
+        handler = UpstreamHandler(
+                client_channel,
+                self._us_filters_factory())
+
+        # Create a response parser instance
+        response_parser = ResponseParser(handler)
+
+        # Create a handle and then bind it to the handler
+        upstream_handle = UpstreamHandle(upstream_channel, response_parser, client_channel)
+        upstream_handle.route = upstream_target
+
+        handler.stream_handle = upstream_handle
+
+        if already_connected:
+            _LOG.info('Viable upstream connection available. Resuing: {}'.format(upstream_channel.fileno))
+
+            # Kill reads
+            if upstream_channel.reads_enabled():
+                upstream_channel.disable_reads()
+
+            # Already connected, invoke the cb ourselves
+            upstream_channel.related = upstream_handle
+            on_connect_cb(upstream_handle)
+        else:
+            _LOG.info('No viable upstream connections available. Created: {}'.format(upstream_channel.fileno))
+
+            # Set up our related information for the async connect
+            upstream_channel.related = (on_connect_cb, upstream_handle)
+
+    def _get(self, route):
+        available = self._channels.get(route)
+
+        # If there's no available list for this route, create it
+        if available is None:
+            available = list()
+            self._channels[route] = available
+
+        return available
+
+    def _open(self, route):
+        # Let's alias some things
+        us_host, us_port = route[:2]
 
         try:
-            self._upstream_tracker.connect(upstream_target)
-        except Exception as ex:
-            _LOG.exception(ex)
+            # Create the channel and register it
+            upstream_channel = self._ce_router.register(
+                ioh.SocketChannel.Create(socket.AF_INET))
 
-    def _on_upstream_live(self, upstream):
-        self._upstream_handler = UpstreamHandler(
-            self._downstream,
-            upstream,
-            self._us_filter_pl)
-
-        if self._upstream_parser:
-            self._upstream_parser.destroy()
-        self._upstream_parser = ResponseParser(self._upstream_handler)
-
-        # Set the read callback
-        upstream.read(self._on_upstream_read)
-
-        # Send the proxied request object
-        upstream.write(self._request.to_bytes())
-
-        # Drop the ref to the proxied request head
-        self._request = None
-
-        # Set up our downstream handler
-        self._downstream_handler.on_upstream_connect(upstream)
-
-    def _on_downstream_close(self):
-        self._upstream_tracker.destroy()
-        self._downstream_parser.destroy()
-        self._downstream_parser = None
-
-    def _on_downstream_error(self, error):
-        _LOG.error('Downstream error: {}'.format(error))
-        if not self._downstream.closed():
-            self._downstream.close()
-
-    def _on_upstream_error(self, error):
-        if not self._downstream.closed():
-            self._downstream.write(_BAD_GATEWAY_RESP.to_bytes())
-
-    def _on_upstream_close(self):
-        if not self._downstream.closed():
-            self._downstream.close()
-
-        if self._upstream_parser is not None:
-            self._upstream_parser.destroy()
-            self._upstream_parser = None
-
-    def _on_downstream_read(self, data):
-        try:
-            self._downstream_parser.execute(data)
-        except StreamClosedError:
-            pass
-        except Exception as ex:
-            _LOG.exception(ex)
-
-    def _on_upstream_read(self, data):
-        try:
-            self._upstream_parser.execute(data)
-        except StreamClosedError:
-            pass
+            # Queue our connection attempt and then return the channel
+            upstream_channel.connect((us_host, us_port))
+            return upstream_channel
         except Exception as ex:
             _LOG.exception(ex)
 
 
-class TornadoHttpProxy(TCPServer):
-    """
-    Subclass of the Tornado TCPServer that lets us set up the Pyrox proxy
-    orchestrations.
+class ConnectionDriver(ioh.ChannelEventHandler):
 
-    :param pipelines: This is a tuple with the upstream filter pipeline factory
-                      as the first element and the downstream filter pipeline
-                      factory as the second element.
-    """
-    def __init__(self, pipeline_factories, default_us_targets=None,
-                 ssl_options=None):
-        super(TornadoHttpProxy, self).__init__(ssl_options=ssl_options)
-        self._router = RoundRobinRouter(default_us_targets)
-        self.us_pipeline_factory = pipeline_factories[0]
-        self.ds_pipeline_factory = pipeline_factories[1]
+    def __init__(self, ds_filters_factory, us_filters_factory, dest_router):
+        self._connection_tracker = None
+        self._ce_router = None
 
-    def handle_stream(self, downstream, address):
-        connection_handler = ProxyConnection(
-            self.us_pipeline_factory(),
-            self.ds_pipeline_factory(),
-            downstream,
-            self._router)
+        self._ds_filters_factory = ds_filters_factory
+        self._us_filters_factory = us_filters_factory
+        self._dest_router = dest_router
+
+    def init(self, ce_router):
+        self._ce_router = ce_router
+        self._connection_tracker = ConnectionTracker(
+            ce_router, self._dest_router, self._us_filters_factory)
+
+    def on_accept(self, channel):
+        # Pull data and see what the client wants
+        channel.enable_reads()
+
+        # Init the handler and parser - these guys go hand in hand
+        handler = DownstreamHandler(
+            self._ds_filters_factory(),
+            self._connection_tracker.connect)
+        request_parser = RequestParser(handler)
+
+        # Link back to make sure upstream gets populated correctly
+        stream_handle = DownstreamHandle(channel, request_parser)
+        handler.stream_handle = stream_handle
+
+        # Set related info
+        channel.related = stream_handle
+
+    def on_close(self, channel):
+        kill_channel(channel, self._connection_tracker)
+
+    def on_error(self, channel):
+        kill_channel(channel, self._connection_tracker)
+
+    def on_connect(self, channel):
+        # Unpack our goodies
+        on_connect_cb, stream_handle = channel.related
+
+        # Trim related items since we don't need the cb anymore after this
+        channel.related = stream_handle
+
+        # Let our downstream handler know we're ready for content
+        on_connect_cb(stream_handle)
+
+    def on_read(self, channel, data):
+        channel.related.parser.execute(data)
+
+    def on_send_complete(self, channel):
+        channel.related.update()

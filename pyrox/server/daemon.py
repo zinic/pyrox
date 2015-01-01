@@ -7,6 +7,8 @@ import inspect
 import socket
 import multiprocessing
 
+import pyrox.iohandling as ioh
+
 from tornado.ioloop import IOLoop
 from tornado.netutil import bind_sockets
 from tornado.process import cpu_count
@@ -15,8 +17,8 @@ from pyrox.log import get_logger, get_log_manager
 from pyrox.filtering import HttpFilterPipeline
 from pyrox.util.config import ConfigurationError
 from pyrox.server.config import load_pyrox_config
-from pyrox.server.proxyng import TornadoHttpProxy
-
+from pyrox.server.proxyng import ConnectionDriver
+from pyrox.server.routing import RoundRobinRouter
 
 _LOG = get_logger(__name__)
 _active_children_pids = list()
@@ -157,17 +159,22 @@ def start_proxy(sockets, config):
 
         _LOG.debug('SSL enabled: {}'.format(ssl_options))
 
-    # Create proxy server ref
-    http_proxy = TornadoHttpProxy(
-        filter_pipeline_factories,
-        config.routing.upstream_hosts,
-        ssl_options)
+    router = RoundRobinRouter(config.routing.upstream_hosts)
 
-    # Add our sockets for watching
-    http_proxy.add_sockets(sockets)
+    driver = ConnectionDriver(
+        filter_pipeline_factories[0],
+        filter_pipeline_factories[1],
+        router)
 
-    # Start tornado
-    IOLoop.current().start()
+    cer = ioh.ChannelEventRouter()
+    cer.set_event_handler(driver)
+
+    socket_server = ioh.SocketChannelServer(cer)
+
+    for socket in sockets:
+        socket_server.listen(socket)
+
+    socket_server.start()
 
 
 def start_pyrox(config):

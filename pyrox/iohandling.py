@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function,\
     with_statement
 
 import copy
-import traceback
 import threading
 import collections
 import errno
@@ -58,6 +57,31 @@ ERROR = _EPOLLERR
 def _is_connect_error(ex):
     error = ex.args[0]
     return error != errno.EINPROGRESS and error not in _ERRNO_WOULDBLOCK
+
+
+def _callback_wrapper(callback, *cb_args, **cb_kwargs):
+    channel = cb_kwargs.get('channel')
+
+    if channel is None:
+        raise TypeError('Channel argument must be set in kwargs')
+
+    try:
+        # Use a NullContext to ensure that all StackContexts are run
+        # inside our blanket exception handler rather than outside.
+        with stack_context.NullContext():
+            callback(*cb_args, **cb_kwargs)
+    except Exception as ex:
+        gen_log.error("Uncaught exception: %s", ex)
+
+        # Close the socket on an uncaught exception from a user callback
+        # (It would eventually get closed when the socket object is
+        # gc'd, but we don't want to rely on gc happening before we
+        # run out of file descriptors)
+        channel.close()
+
+        # Re-raise the exception so that IOLoop.handle_callback_exception
+        # can see it and log the error
+        raise
 
 
 def ssl_wrap_socket(schannel, address, options=None, remote_host=None):
@@ -268,12 +292,8 @@ class FileDescriptorChannel(Channel):
 
 class SocketChannel(FileDescriptorChannel):
 
-    def __init__(self, sock, address=None, io_loop=None):
+    def __init__(self, sock, io_loop=None):
         super(SocketChannel, self).__init__(sock.fileno(), io_loop)
-
-        # Where are we going?
-        self.address = address
-        self.remote= '{}:{}'.format(address[0], address[1])
 
         # State tracking
         self.connecting = False
@@ -291,30 +311,32 @@ class SocketChannel(FileDescriptorChannel):
 
     @classmethod
     def Listen(cls, address, family=socket.AF_UNSPEC, backlog=128, io_loop=None):
-        new_channel = SocketChannel.Create(address, family, io_loop)
+        new_channel = SocketChannel.Create(family, io_loop)
+        new_channel.bind(address)
         new_channel.listen()
+
         return new_channel
 
     @classmethod
     def Connect(cls, address, family=socket.AF_UNSPEC, io_loop=None):
-        new_channel = SocketChannel.Create(address, family, io_loop)
-        new_channel.connect()
+        new_channel = SocketChannel.Create(family, io_loop)
+        new_channel.connect(address)
+
         return new_channel
 
     @classmethod
-    def Create(cls, address, family=socket.AF_UNSPEC, io_loop=None):
-        new_channel = SocketChannel(socket.socket(family), address, io_loop)
-        return new_channel
+    def Create(cls, family=socket.AF_UNSPEC, io_loop=None):
+        return SocketChannel(socket.socket(family), io_loop)
 
     def accept(self):
         new_sock, addr = self._socket.accept()
-        return SocketChannel(new_sock, addr, self._io_loop)
+        return SocketChannel(new_sock, self._io_loop)
 
-    def connect(self):
+    def connect(self, address):
         self.connecting = True
 
         try:
-            self._socket.connect(self.address)
+            self._socket.connect(address)
         except socket.error as ex:
             if _is_connect_error(ex):
                 self._socket = None
@@ -322,8 +344,10 @@ class SocketChannel(FileDescriptorChannel):
 
         self.enable_writes()
 
+    def bind(self, address):
+        self._socket.bind(address)
+
     def listen(self, backlog=128):
-        self._socket.bind(self.address)
         self._socket.listen(backlog)
         self.listening = True
 
@@ -533,29 +557,28 @@ class ChannelEventRouter(object):
         Wrap running callbacks in try/except to allow us to gracefully
         handle exceptions and errors that bubble up.
         """
-        channel = kwargs.get('channel')
+        # Add the callback with our nifty little wrapper stuff beolow
+        self._io_loop.add_callback(
+            _callback_wrapper,
+            callback,
+            *args,
+            **kwargs)
 
-        if channel is None:
-            raise TypeError('Channel argument must be set in kwargs')
 
-        def _callback_wrapper():
-            try:
-                # Use a NullContext to ensure that all StackContexts are run
-                # inside our blanket exception handler rather than outside.
-                with stack_context.NullContext():
-                    callback(*args, **kwargs)
-            except Exception as ex:
-                gen_log.error("Uncaught exception: %s", ex)
+class SocketChannelServer(object):
 
-                # Close the socket on an uncaught exception from a user callback
-                # (It would eventually get closed when the socket object is
-                # gc'd, but we don't want to rely on gc happening before we
-                # run out of file descriptors)
-                channel.close()
+    def __init__(self, channel_evrouter, io_loop=None, ssl_options=None):
+        self._ssl_options = ssl_options
+        self._ce_router = channel_evrouter
+        self._io_loop = io_loop or ioloop.IOLoop.current()
 
-                # Re-raise the exception so that IOLoop.handle_callback_exception
-                # can see it and log the error
-                raise
+    def start(self):
+        self._io_loop.start()
 
-        # Add the callback
-        self._io_loop.add_callback(_callback_wrapper)
+    def listen(self, socket):
+        channel = SocketChannel(socket, io_loop=self._io_loop)
+        channel.listen()
+
+        self._ce_router.register(channel)
+        channel.enable_reads()
+
