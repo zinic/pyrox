@@ -250,12 +250,16 @@ class HttpFilterPipeline(object):
                 _LOG.debug('Function instance {} handles response body'.format(finst))
                 self._resp_body_chain.append((http_filter, finst))
 
-    def _on_head(self, chain, head):
+    def _on_head(self, chain, *args):
         last_action = next()
 
         for http_filter, method in chain:
             try:
-                action = method(head)
+                argspec = inspect.getargspec(method)
+                if len(argspec.args) == 2:
+                    action = method(*args[0:1])
+                else:
+                    action = method(*args)
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
@@ -266,12 +270,16 @@ class HttpFilterPipeline(object):
 
         return last_action
 
-    def _on_body(self, chain, body_part, output):
+    def _on_body(self, chain, *args):
         last_action = next()
 
         for http_filter, method in chain:
             try:
-                action = method(body_part, output)
+                argspec = inspect.getargspec(method)
+                if len(argspec.args) == 3:
+                    action = method(*args[0:2])
+                else:
+                    action = method(*args)
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
@@ -289,8 +297,8 @@ class HttpFilterPipeline(object):
     def on_request_body(self, body_part, output):
         return self._on_body(self._req_body_chain, body_part, output)
 
-    def on_response_head(self, response_head):
-        return self._on_head(self._resp_head_chain, response_head)
+    def on_response_head(self, *args):
+        return self._on_head(self._resp_head_chain, *args)
 
-    def on_response_body(self, body_part, output):
-        return self._on_body(self._resp_body_chain, body_part, output)
+    def on_response_body(self, *args):
+        return self._on_body(self._resp_body_chain, *args)
