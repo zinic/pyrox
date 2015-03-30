@@ -57,6 +57,8 @@ class TestHttpFilterPipeline(unittest.TestCase):
         resp_head = mock.MagicMock()
         resp_body = mock.MagicMock()
         req_head = mock.MagicMock()
+        msg_part = mock.MagicMock()
+        out = mock.MagicMock()
 
         assertEqual = self.assertEqual
 
@@ -76,9 +78,9 @@ class TestHttpFilterPipeline(unittest.TestCase):
                 self.on_resp_head_called = True
                 
             @filtering.handles_response_body
-            def on_response_body(self, response_head, response_body, request_head):
-                assertEqual(resp_head, response_head)
-                assertEqual(resp_body, response_body)
+            def on_response_body(self, message_part, output, request_head):
+                assertEqual(msg_part, message_part)
+                assertEqual(out, output)
                 assertEqual(req_head, request_head)
                 self.on_resp_body_called = True
 
@@ -89,7 +91,7 @@ class TestHttpFilterPipeline(unittest.TestCase):
         pipeline.add_filter(resp_filter)
 
         pipeline.on_response_head(resp_head, req_head)
-        pipeline.on_response_body(resp_head, resp_body, req_head)
+        pipeline.on_response_body(msg_part, out, req_head)
         self.assertTrue(resp_filter.were_expected_calls_made())
     
 
