@@ -209,21 +209,22 @@ class UpstreamHandler(ProxyHandler):
     proxy.
     """
 
-    def __init__(self, downstream, upstream, filter_pl):
+    def __init__(self, downstream, upstream, filter_pl, request):
         super(UpstreamHandler, self).__init__(filter_pl, HttpResponse())
         self._downstream = downstream
         self._upstream = upstream
+        self._request = request
 
     def on_status(self, status_code):
         self._http_msg.status = str(status_code)
 
     def on_headers_complete(self):
-        action = self._filter_pl.on_response_head(self._http_msg)
+        action = self._filter_pl.on_response_head(self._http_msg, self._request)
 
         # If we are intercepting the response body do some negotiation
         if self._filter_pl.intercepts_resp_body():
 
-            # If there's a content length, negotiate the tansfer encoding
+            # If there's a content length, negotiate the transfer encoding
             if self._http_msg.get_header('content-length'):
                 self._chunked = True
                 self._http_msg.remove_header('content-length')
@@ -243,7 +244,7 @@ class UpstreamHandler(ProxyHandler):
             accumulator = AccumulationStream()
             data = bytes
 
-            self._filter_pl.on_response_body(data, accumulator)
+            self._filter_pl.on_response_body(data, accumulator, self._request)
 
             if accumulator.size() > 0:
                 data = accumulator.bytes
@@ -400,7 +401,8 @@ class ProxyConnection(object):
         self._upstream_handler = UpstreamHandler(
             self._downstream,
             upstream,
-            self._us_filter_pl)
+            self._us_filter_pl,
+            self._request)
 
         if self._upstream_parser:
             self._upstream_parser.destroy()

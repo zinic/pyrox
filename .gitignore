@@ -15,6 +15,7 @@ pyrox/util/cbuf.c
 .tox
 *.DS_Store*
 nosetests.xml
-*/coverage.xml
+coverage.xml
 *.komodoproject
-
+*.egg
+*.swp
