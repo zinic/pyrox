@@ -4,10 +4,7 @@ Installing Pyrox
 Debian Compatible Systems
 -------------------------
 
-Download the correct .deb file for your architecture.
-
-* Debian Wheezy (No Link Available Yet)
-* `Ubuntu 12.04 LTS <http://166.78.244.178/pool/squeeze/main/p/pyrox/pyrox_0.4.1_amd64.deb>`_
+This is a work in progress.
 
 ::
 
@@ -18,3 +15,4 @@ Download the correct .deb file for your architecture.
 Configuring Pyrox
 -----------------
 
+This is a work in progress.

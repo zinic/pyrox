@@ -32,9 +32,8 @@ def read(relative):
     contents = open(relative, 'r').read()
     return [l for l in contents.split('\n') if l != '']
 
-
-for mod in read('../tools/cython-modules'):
-    sys.modules[mod] = ModuleMock()
+sys.modules['pyrox.http.model_util'] = ModuleMock()
+sys.modules['pyrox.http.parser'] = ModuleMock()
 
 
 # -- General configuration -----------------------------------------------------

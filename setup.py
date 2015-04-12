@@ -1,25 +1,16 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-
 import pyrox.about
 
 from setuptools import setup, find_packages
 from distutils.extension import Extension
 
 try:
-    from Cython.Compiler.Main import compile
-    from Cython.Distutils import build_ext
+    from Cython.Build import cythonize
     has_cython = True
 except ImportError:
     has_cython = False
-
-COMPILER_ARGS = list()
-
-DEBUG = os.getenv('DEBUG')
-
-if DEBUG and DEBUG.lower() == 'true':
-    COMPILER_ARGS.append('-D DEBUG_OUTPUT')
 
 
 def read(relative):
@@ -27,64 +18,27 @@ def read(relative):
     return [l for l in contents.split('\n') if l != '']
 
 
-def module_files(module_name, *extensions):
-    found = list()
-    filename_base = module_name.replace('.', '/')
-    for extension in extensions:
-        filename = '{}.{}'.format(filename_base, extension)
-        if os.path.isfile(filename):
-            found.append(filename)
-    return found
+def compile_pyx():
+    ext_modules = list()
+
+    cparser = cythonize('pyrox/http/parser.pyx')[0]
+    cparser.sources.insert(0, 'include/http_el.c')
+    ext_modules.append(cparser)
+
+    ext_modules.extend(cythonize('pyrox/http/model_util.pyx'))
+
+    return ext_modules
 
 
-def fail_build(reason, code=1):
-    print(reason)
-    sys.exit(code)
+# compiler flags
+CFLAGS = ['-I', './include']
+DEBUG = os.getenv('DEBUG')
 
+if DEBUG and DEBUG.lower() == 'true':
+    CFLAGS.extend(['-D', 'DEBUG_OUTPUT'])
 
-def cythonize():
-    if not has_cython:
-        fail_build('In order to build this project, cython is required.')
+os.environ['CFLAGS'] = ' '.join(CFLAGS)
 
-    for module in read('tools/cython-modules'):
-        for cython_target in module_files(module, 'pyx', 'pyd'):
-            compile(cython_target)
-
-
-def package_c():
-    extensions = list()
-
-    if os.path.isfile('pyrox/http/parser.c'):
-        extensions.append(Extension(
-            'pyrox.http.parser',
-            include_dirs=['include/'],
-            sources=[
-                'include/http_el.c',
-                'pyrox/http/parser.c'],
-            extra_compile_args=COMPILER_ARGS))
-
-    if os.path.isfile('pyrox/http/model_util.c'):
-        extensions.append(Extension(
-            'pyrox.http.model_util',
-            sources=['pyrox/http/model_util.c']))
-
-    if os.path.isfile('pyrox/util/cbuf.c'):
-        extensions.append(Extension(
-            'pyrox.util.cbuf',
-            include_dirs=['include/'],
-            sources=[
-                'include/cbuf.c',
-                'pyrox/util/cbuf.c']))
-
-    return extensions
-
-ext_modules = None
-
-# Got tired of fighting build_ext
-if 'build' in sys.argv:
-    cythonize()
-
-ext_modules = package_c()
 
 setup(
     name='pyrox',
@@ -109,10 +63,10 @@ setup(
         'Topic :: Utilities'
     ],
     scripts=['scripts/pyrox'],
-    tests_require=read('tools/test-requires'),
-    install_requires=read('tools/pip-requires'),
+    tests_require=read('tools/tests_require.txt'),
+    install_requires=read('tools/install_requires.txt'),
     test_suite='nose.collector',
     zip_safe=False,
     include_package_data=True,
     packages=find_packages(exclude=['*.tests']),
-    ext_modules=ext_modules)
+    ext_modules=compile_pyx())

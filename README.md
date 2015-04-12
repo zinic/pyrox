@@ -32,14 +32,11 @@ Thanks [Read the Docs](http://readthedocs.org)!
 
 ## Building Pyrox
 
-Building pyrox requires only a few dependencies. The cython dependency has been
-stored in [tools/dev-requires](https://github.com/zinic/pyrox/blob/master/tools/dev-requires)
-in the case where the software is being installed as a pre-built package. For
-development use cases, installing cython is required.
+Building pyrox requires only a few dependencies. For development use cases, installing cython is required.
 
 ```bash
-pip install -r tools/dev-requires -r tools/pip-requires -r tools/test-requires
-python setup.py build && python setup.py build_ext --inplace
+pip install -r tools/install_requires.txt -r tools/tests_require.txt
+python setup.py build_ext --inplace
 nosetests
 ```
 
