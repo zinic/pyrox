@@ -189,6 +189,8 @@ class DownstreamHandler(ProxyHandler):
             self._preread_body = None
 
     def on_message_complete(self, is_chunked, keep_alive):
+        callback = self._downstream.close
+
         # Enable reading when we're ready later
         self._downstream.handle.disable_reading()
 
@@ -196,7 +198,7 @@ class DownstreamHandler(ProxyHandler):
             self._http_msg = HttpRequest()
 
         if self._intercepted:
-            self._downstream.write(self._response_tuple[0].to_bytes())
+            self._downstream.write(self._response_tuple[0].to_bytes(), callback)
         elif is_chunked or self._chunked:
             # Finish the last chunk.
             self._upstream.write(_CHUNK_CLOSE)
