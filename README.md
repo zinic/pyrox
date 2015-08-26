@@ -24,7 +24,6 @@ Thanks [Read the Docs](http://readthedocs.org)!
 
 ## Features
 
-* Debian packaging targeting Ubuntu 12.04 LTS
 * Extensive plugin support with the ability to source middleware code from multiple, separate plugin paths
 * Fast HTTP parser written in C with much of the code based on the [Joyent HTTP Parser](https://github.com/joyent/http-parser)
 * Utilizes [Tornado Async I/O](http://www.tornadoweb.org/en/stable/)
