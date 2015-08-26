@@ -1,4 +1,11 @@
-from urlparse import urlparse
+import sys
+
+
+if sys.version_info.major == 2:
+    from urlparse import urlparse
+elif sys.version_info.major == 3:
+    from urllib.parse import urlparse
+
 
 PROTOCOL_HTTP = 0
 PROTOCOL_HTTPS = 1

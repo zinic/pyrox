@@ -4,7 +4,9 @@ from __future__ import absolute_import, division, print_function,\
 import collections
 import errno
 import socket
+import logging
 import ssl
+import sys
 
 from tornado import ioloop
 from tornado.log import gen_log
@@ -29,7 +31,10 @@ _ERRNO_WOULDBLOCK = (errno.EWOULDBLOCK, errno.EAGAIN)
 _ERRNO_CONNRESET = (errno.ECONNRESET, errno.ECONNABORTED, errno.EPIPE)
 
 # Nice constant for enabling debug output
-_SHOULD_LOG_DEBUG_OUTPUT = gen_log.isEnabledFor('DEBUG')
+import sys
+
+
+_SHOULD_LOG_DEBUG_OUTPUT = gen_log.isEnabledFor(logging.DEBUG)
 
 
 class StreamClosedError(IOError):

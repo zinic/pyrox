@@ -1,7 +1,12 @@
-import os.path
+import os
+import sys
 import pynsive
 
-from ConfigParser import ConfigParser
+
+if sys.version_info.major == 2:
+    from ConfigParser import ConfigParser
+elif sys.version_info.major == 3:
+    from configparser import ConfigParser
 
 
 def _find_cfg_classes(module):

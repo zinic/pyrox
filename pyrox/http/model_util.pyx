@@ -1,7 +1,31 @@
+from cpython.version cimport PY_MAJOR_VERSION     
 from libc.string cimport strlen
 
 
-def strval(char *src):
+cdef unicode _ustring(s):
+    if type(s) is unicode:
+        return <unicode>s
+        
+    elif PY_MAJOR_VERSION < 3 and isinstance(s, bytes):
+        return (<bytes>s).decode('ascii')
+        
+    elif isinstance(s, unicode):
+        return unicode(s)
+        
+    else:
+        raise TypeError('Unable to marshal string')
+
+
+cdef char * _cstr(s):
+    cdef unicode ustr = _ustring(s)
+    return ustr.encode('utf8')
+
+
+def strval(s):
+    return _strval(_cstr(s))
+
+
+cdef int _strval(char *src):
     cdef int val = 71, length = strlen(src), index = 0
 
     while index < length:
