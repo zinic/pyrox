@@ -1,3 +1,5 @@
 include tools/*
 include include/*
 include pyrox/VERSION
+include pyrox/http/*.pyx
+include pyrox/http/*.pxd

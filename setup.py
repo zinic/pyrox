@@ -3,14 +3,36 @@ import os
 import sys
 import pyrox.about
 
-from setuptools import setup, find_packages
-from distutils.extension import Extension
+from setuptools import setup, find_packages, Extension
 
-try:
-    from Cython.Build import cythonize
-    has_cython = True
-except ImportError:
-    has_cython = False
+
+# force setuptools not to convert .pyx to .c in the Extension
+import setuptools.extension
+assert callable(setuptools.extension.have_pyrex), "Requires setuptools 0.6.26 or later"
+setuptools.extension.have_pyrex = lambda: True
+
+# https://bitbucket.org/pypa/setuptools/issues/288/cannot-specify-cython-under-setup_requires
+class LateResolvedCommandLookup(dict):
+    """
+    A dictionary of distutils commands with overrides to be resolved late.
+    Late-resolved commands should be implemented as callable methods on
+    the class.
+
+    This class allows 'build_ext' to be resolve after setup_requires resolves
+    dependencies such as Cython.
+    """
+    def __getitem__(self, name):
+        if getattr(self, name, None):
+            return getattr(self, name)()
+        return super(LateResolvedCommandLookup, self).__getitem__(name)
+
+    def __contains__(self, name):
+        return hasattr(self, name) or (
+            super(LateResolvedCommandLookup, self).__contains__(name))
+
+    def build_ext(self):
+        Cython = __import__('Cython.Distutils.build_ext')
+        return Cython.Distutils.build_ext
 
 
 def read(relative):
@@ -21,17 +43,21 @@ def read(relative):
 def compile_pyx():
     ext_modules = list()
 
-    cparser = cythonize('pyrox/http/parser.pyx')[0]
-    cparser.sources.insert(0, 'include/http_el.c')
-    ext_modules.append(cparser)
+    e = Extension('pyrox/http/parser',
+            sources=['pyrox/http/parser.pyx'],
+            include_dirs = ['include/'])
+    ext_modules.append(e)
 
-    ext_modules.extend(cythonize('pyrox/http/model_util.pyx'))
+    e = Extension('pyrox/http/model_util',
+            sources=['pyrox/http/model_util.pyx'],
+            include_dirs = ['include/'])
+    ext_modules.append(e)
 
     return ext_modules
 
 
 # compiler flags
-CFLAGS = ['-I', './include']
+CFLAGS = []
 DEBUG = os.getenv('DEBUG')
 
 if DEBUG and DEBUG.lower() == 'true':
@@ -63,10 +89,13 @@ setup(
         'Topic :: Utilities'
     ],
     scripts=['scripts/pyrox'],
+    setup_requires=read('tools/setup_requires.txt'),
     tests_require=read('tools/tests_require.txt'),
     install_requires=read('tools/install_requires.txt'),
     test_suite='nose.collector',
     zip_safe=False,
     include_package_data=True,
     packages=find_packages(exclude=['*.tests']),
-    ext_modules=compile_pyx())
+    ext_modules=compile_pyx(),
+    cmdclass=LateResolvedCommandLookup(),
+)
