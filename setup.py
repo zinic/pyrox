@@ -43,12 +43,12 @@ def read(relative):
 def compile_pyx():
     ext_modules = list()
 
-    e = Extension('pyrox/http/parser',
+    e = Extension('pyrox.http.parser',
             sources=['pyrox/http/parser.pyx'],
             include_dirs = ['include/'])
     ext_modules.append(e)
 
-    e = Extension('pyrox/http/model_util',
+    e = Extension('pyrox.http.model_util',
             sources=['pyrox/http/model_util.pyx'],
             include_dirs = ['include/'])
     ext_modules.append(e)
