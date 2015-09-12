@@ -67,6 +67,9 @@ setup(
     install_requires=read('tools/install_requires.txt'),
     test_suite='nose.collector',
     zip_safe=False,
+    package_data={
+        '': ['*.pyx']
+    },
     include_package_data=True,
     packages=find_packages(exclude=['*.tests']),
     ext_modules=compile_pyx())
