@@ -45,8 +45,8 @@ class FilterAction(object):
     def breaks_pipeline(self):
         return self.kind in _BREAKING_ACTIONS
 
-    def intercepts_request(self):
-        return self.is_replying()
+    def should_connect_upstream(self):
+        return self.kind not in (REPLY, REJECT)
 
     def is_consuming(self):
         return self.kind == CONSUME
@@ -149,7 +149,7 @@ def consume():
     return _DEFAULT_CONSUME_ACTION
 
 
-def reply(response, src):
+def reply(response, src=None):
     """
     A special type of rejection that implies willful handling of a request.
     This call may optionally include a stream or a data blob to take the
@@ -157,9 +157,6 @@ def reply(response, src):
 
     :param response: the response object to reply to the client with
     """
-    if response == None:
-        raise TypeError('The response of a reply must be a response.')
-
     return FilterAction(REPLY, (response, src))
 
 
@@ -173,8 +170,10 @@ def reject(response=None):
 
     :param response: the response object to reply to the client with
     """
-    return FilterAction(REPLY, (response, )) if response != None\
-        else FilterAction(REPLY, (_DEFAULT_REJECT_RESP, ))
+    if response is None:
+        return FilterAction(REPLY, (_DEFAULT_REJECT_RESP, None))
+    else:
+        return FilterAction(REPLY, (response, None))
 
 
 def route(upstream_target):
@@ -256,15 +255,19 @@ class HttpFilterPipeline(object):
         for http_filter, method in chain:
             try:
                 argspec = inspect.getargspec(method)
+
                 if len(argspec.args) == 2:
                     action = method(*args[0:1])
                 else:
                     action = method(*args)
+
             except Exception as ex:
                 _LOG.exception(ex)
                 action = reject()
-            if action:
+
+            if action is not None:
                 last_action = action
+
                 if action.breaks_pipeline():
                     break
 

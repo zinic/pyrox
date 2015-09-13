@@ -108,6 +108,7 @@ class DownstreamHandler(ProxyHandler):
         super(DownstreamHandler, self).__init__(filter_pl, HttpRequest())
         self._downstream = downstream
         self._upstream = None
+        self._keep_alive = False
         self._preread_body = None
         self._connect_upstream = connect_upstream
 
@@ -138,7 +139,7 @@ class DownstreamHandler(ProxyHandler):
                 self._http_msg.header('transfer-encoding').values.append('chunked')
 
         # If we're rejecting then we're not going to connect to upstream
-        if action.intercepts_request():
+        if not action.should_connect_upstream():
             self._intercepted = True
             self._response_tuple = action.payload
         else:
@@ -153,8 +154,6 @@ class DownstreamHandler(ProxyHandler):
                 self._connect_upstream(self._http_msg)
 
     def on_body(self, bytes, length, is_chunked):
-        self._chunked = is_chunked
-
         if self._downstream.reading():
             # Hold up on the client side until we're done with this chunk
             self._downstream.handle.disable_reading()
@@ -189,19 +188,77 @@ class DownstreamHandler(ProxyHandler):
             self._preread_body = None
 
     def on_message_complete(self, is_chunked, keep_alive):
-        callback = self._downstream.close
-
-        # Enable reading when we're ready later
-        self._downstream.handle.disable_reading()
-
-        if keep_alive:
-            self._http_msg = HttpRequest()
+        self._keep_alive = bool(keep_alive)
 
         if self._intercepted:
-            self._downstream.write(self._response_tuple[0].to_bytes(), callback)
-        elif is_chunked or self._chunked:
-            # Finish the last chunk.
-            self._upstream.write(_CHUNK_CLOSE)
+            # Commit the response to the client (aka downstream)
+            writer = ResponseWriter(
+                self._response_tuple[0],
+                self._response_tuple[1],
+                self._downstream,
+                self.complete)
+
+            writer.commit()
+
+        elif is_chunked:
+            # Finish the body with the closing chunk for the origin server
+            self._upstream.write(_CHUNK_CLOSE, self.complete)
+
+    def complete(self):
+        if self._keep_alive:
+            # Clean up the message obj
+            self._http_msg = HttpRequest()
+        else:
+            # We're done here - close up shop
+            self._downstream.close()
+
+
+class ResponseWriter(object):
+
+    def __init__(self, response, source, stream, on_complete):
+        self._on_complete = on_complete
+        self._response = response
+        self._source = source
+        self._stream = stream
+        self._written = 0
+
+    def commit(self):
+        self.write_head()
+
+    def write_head(self):
+        if self._source is not None:
+            if self._response.get_header('content-length'):
+                self._response.remove_header('content-length')
+                self._response.remove_header('transfer-encoding')
+
+            # Set to chunked to make the transfer easier
+            self._response.header('transfer-encoding').values.append('chunked')
+
+        self._stream.write(self._response.to_bytes(), self.write_body)
+
+    def write_body(self):
+        if self._source is not None:
+            src_type = type(self._source)
+
+            if src_type is bytearray or src_type is bytes or srt_type is str:
+                self.write_body_as_array()
+            else:
+                raise TypeError('Unable to use {} as response body'.format(srt_type))
+
+    def write_body_as_array(self):
+        src_len = len(self._source)
+
+        if self._written == src_len:
+            self._stream.write(_CHUNK_CLOSE, self._on_complete)
+
+        else:
+            max_idx = self._written + 4096
+            limit_idx = max_idx if max_idx < src_len else src_len
+
+            next_chunk = self._source[self._written:limit_idx]
+            self._written = limit_idx
+
+            _write_to_stream(self._stream, next_chunk, True, self.write_body_as_array)
 
 
 class UpstreamHandler(ProxyHandler):
@@ -429,10 +486,13 @@ class ProxyConnection(object):
 
     def _on_downstream_error(self, error):
         _LOG.error('Downstream error: {}'.format(error))
+
         if not self._downstream.closed():
             self._downstream.close()
 
     def _on_upstream_error(self, error):
+        _LOG.error('Upstream error: {}'.format(error))
+
         if not self._downstream.closed():
             self._downstream.write(_BAD_GATEWAY_RESP.to_bytes())
 

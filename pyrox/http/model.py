@@ -1,4 +1,4 @@
-from .model_util import request_to_bytes, response_to_bytes, strval
+from .model_util import request_to_bytes, response_to_bytes
 
 
 _EMPTY_HEADER_VALUES = ()
@@ -59,7 +59,7 @@ class HttpMessage(object):
         message and returned. If the header already exists, then it is
         returned.
         """
-        nameval = strval(name)
+        nameval = name.lower()
         header = self._headers.get(nameval, None)
         if not header:
             header = HttpHeader(name)
@@ -80,7 +80,7 @@ class HttpMessage(object):
         Unlike the header function, if the header does not exist then a None
         result is returned.
         """
-        return self._headers.get(strval(name), None)
+        return self._headers.get(name.lower(), None)
 
     def remove_header(self, name):
         """
@@ -88,7 +88,7 @@ class HttpMessage(object):
         If the header exists, it is removed and a result of True is returned.
         If the header does not exist then a result of False is returned.
         """
-        nameval = strval(name)
+        nameval = name.lower()
         if nameval in self._headers:
             del self._headers[nameval]
             return True
