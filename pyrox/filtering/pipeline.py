@@ -7,6 +7,16 @@ _LOG = get_logger(__name__)
 
 
 """
+Logging-fu
+"""
+_CHECKING_DECORATORS = 'Checking function instance {} for decorators'
+_HANDLES_REQ_HEAD = 'Function instance {} handles request head'
+_HANDLES_REQ_BODY = 'Function instance {} handles request body'
+_HANDLES_RES_HEAD = 'Function instance {} handles response head'
+_HANDLES_RES_BODY = 'Function instance {} handles response body'
+
+
+"""
 Action enumerations.
 """
 NEXT_FILTER = 0
@@ -230,23 +240,23 @@ class HttpFilterPipeline(object):
                 continue
 
             finst = method[1]
-            _LOG.debug('Checking function instance {} for decorators'.format(finst))
+            _LOG.debug(_CHECKING_DECORATORS.format(finst))
 
             # Assume that if an attribute exists then it is decorated
             if hasattr(finst, '_handles_request_head'):
-                _LOG.debug('Function instance {} handles request head'.format(finst))
+                _LOG.debug(_HANDLES_REQ_HEAD.format(finst))
                 self._req_head_chain.append((http_filter, finst))
 
             if hasattr(finst, '_handles_request_body'):
-                _LOG.debug('Function instance {} handles request body'.format(finst))
+                _LOG.debug(_HANDLES_REQ_BODY.format(finst))
                 self._req_body_chain.append((http_filter, finst))
 
             if hasattr(finst, '_handles_response_head'):
-                _LOG.debug('Function instance {} handles response head'.format(finst))
+                _LOG.debug(_HANDLES_RES_HEAD.format(finst))
                 self._resp_head_chain.append((http_filter, finst))
 
             if hasattr(finst, '_handles_response_body'):
-                _LOG.debug('Function instance {} handles response body'.format(finst))
+                _LOG.debug(_HANDLES_RES_BODY.format(finst))
                 self._resp_body_chain.append((http_filter, finst))
 
     def _on_head(self, chain, *args):

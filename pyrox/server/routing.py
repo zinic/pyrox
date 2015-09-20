@@ -77,7 +77,8 @@ class RoutingHandler(object):
                 if route is not None and isinstance(route, str):
                     self.routes.append(parse_route_url(route))
                 else:
-                    raise TypeError('A route must be either a valid URL string.')
+                    raise TypeError(
+                        'A route must be either a valid URL string.')
 
     def set_next(self, next_route):
         if next_route is not None and isinstance(next_route, str):

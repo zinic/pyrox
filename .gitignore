@@ -19,3 +19,4 @@ coverage.xml
 *.komodoproject
 *.egg
 *.swp
+.eggs
