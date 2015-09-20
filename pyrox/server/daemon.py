@@ -5,6 +5,7 @@ import signal
 import pynsive
 import inspect
 import socket
+import functools
 import multiprocessing
 
 from tornado.ioloop import IOLoop
@@ -24,8 +25,8 @@ _active_children_pids = list()
 
 class FunctionWrapper(object):
 
-    def __init__(self, func):
-        self._func = func
+    def __init__(self, func, attrs):
+        self._func = functools.partial(attrs, **attrs)
 
     def on_request(self, request):
         return self._func(request)
@@ -48,7 +49,10 @@ def _resolve_filter_classes(cls_list):
     filter_cls_list = list()
 
     # Gather the classes listed in the order they're listed
-    for cdef in cls_list:
+    for fdef in cls_list:
+        cdef = fdef['class']
+        attrs = fdef['attrs']
+
         # If there's a complex module path, process the ends of it
         if '.' not in cdef:
             raise ImportError('Bad filter class: {}'.format(cdef))
@@ -60,11 +64,17 @@ def _resolve_filter_classes(cls_list):
             cls = getattr(module, cdef[cdef.rfind('.') + 1:])
 
             if inspect.isclass(cls):
-                filter_cls_list.append(cls)
+                def create():
+                    return cls(**attrs)
+
+                filter_cls_list.append(create)
+
             elif inspect.isfunction(cls):
                 def create():
                     return FunctionWrapper(cls)
+
                 filter_cls_list.append(create)
+
             else:
                 raise TypeError(
                     'Type of a filter must be a function or a class')

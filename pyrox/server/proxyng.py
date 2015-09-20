@@ -50,17 +50,23 @@ _UPSTREAM_UNAVAILABLE.header(
     'Server').values.append('pyrox/{}'.format(VERSION))
 _UPSTREAM_UNAVAILABLE.header('Content-Length').values.append('0')
 
+_MAX_CHUNK_SIZE = 16384
+
+
+def _write_chunk_to_stream(stream, data, callback=None):
+    # Format and write this chunk
+    chunk = bytearray()
+    chunk.extend(hex(len(data))[2:])
+    chunk.extend('\r\n')
+    chunk.extend(data)
+    chunk.extend('\r\n')
+
+    stream.write(chunk, callback)
+
 
 def _write_to_stream(stream, data, is_chunked, callback=None):
     if is_chunked:
-        # Format and write this chunk
-        chunk = bytearray()
-        chunk.extend(hex(len(data))[2:])
-        chunk.extend('\r\n')
-        chunk.extend(data)
-        chunk.extend('\r\n')
-        stream.write(chunk, callback)
-
+        _write_chunk_to_stream(stream, data, callback)
     else:
         stream.write(data, callback)
 
@@ -273,29 +279,42 @@ class ResponseWriter(object):
         if self._source is not None:
             src_type = type(self._source)
 
-            if src_type is bytearray or src_type is bytes or srt_type is str:
+            if src_type is bytearray or src_type is bytes or src_type is str:
                 self.write_body_as_array()
+
+            elif src_type is file:
+                self.write_body_as_file()
+
             else:
                 raise TypeError(
-                    'Unable to use {} as response body'.format(srt_type))
+                    'Unable to use {} as response body'.format(src_type))
+
+    def write_body_as_file(self):
+        next_chunk = self._source.read(_MAX_CHUNK_SIZE)
+
+        if len(next_chunk) == 0:
+            self._stream.write(_CHUNK_CLOSE, self._on_complete)
+        else:
+            _write_chunk_to_stream(
+                self._stream,
+                next_chunk,
+                self.write_body_as_file)
 
     def write_body_as_array(self):
         src_len = len(self._source)
 
         if self._written == src_len:
             self._stream.write(_CHUNK_CLOSE, self._on_complete)
-
         else:
-            max_idx = self._written + 4096
+            max_idx = self._written + _MAX_CHUNK_SIZE
             limit_idx = max_idx if max_idx < src_len else src_len
 
             next_chunk = self._source[self._written:limit_idx]
             self._written = limit_idx
 
-            _write_to_stream(
+            _write_chunk_to_stream(
                 self._stream,
                 next_chunk,
-                True,
                 self.write_body_as_array)
 
 

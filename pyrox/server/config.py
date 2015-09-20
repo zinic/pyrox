@@ -255,18 +255,35 @@ class PipelineConfiguration(ConfigurationPart):
         pipeline = list()
         filters = self._filter_dict()
         pipeline_str = self.get(stream)
-        if pipeline_str:
+
+        if pipeline_str is not None:
             for pl_filter in _split_and_strip(pipeline_str, ','):
                 if pl_filter in filters:
                     pipeline.append(filters[pl_filter])
+
         return pipeline
 
     def _filter_dict(self):
         filters = dict()
-        for pfalias in self.options():
-            if pfalias == 'downstream' or pfalias == 'upstream':
+        for key in self.options():
+            if key == 'downstream' or key == 'upstream':
                 continue
-            filters[pfalias] = self.get(pfalias)
+
+            value = self.get(key)
+
+            if '.' in key:
+                attr_split = key.split('.', 2)
+                filter_name = attr_split[0]
+                attr_name = attr_split[1]
+
+                filters[filter_name]['attrs'][attr_name] = value
+
+            else:
+                filters[key] = {
+                    'class': value,
+                    'attrs': dict()
+                }
+
         return filters
 
 
